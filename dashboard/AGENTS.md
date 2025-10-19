@@ -14,12 +14,15 @@ The catalogue is defined in `app.py` as the `SERVICES` list; the UI renders it a
 
 | ID | Provider | Local Endpoint | Upstream Target | Brief |
 | --- | --- | --- | --- | --- |
-| `lmstudio-chat` | LM Studio | `POST /api/chat` | `http://AIHUB_IP:1234/v1/chat/completions` | OpenAI-compatible chat completions. |
-| `lmstudio-models` | LM Studio | `POST /api/lmstudio/models` | `http://AIHUB_IP:1234/v1/models` | Fetch the upstream model catalogue. |
-| `kokoro-tts` | Kokoro | `POST /api/tts` | `http://AIHUB_IP:8880/v1/audio/speech` | Text-to-Speech returning downloadable MP3. |
-| `faster-whisper-stt` | Faster Whisper REST | `POST /api/stt` | `http://AIHUB_IP:10400/v1/audio/transcriptions` | Speech-to-text via multipart upload. |
-| `openwebui-chat` | Open WebUI | `POST /api/openwebui/chat` | `http://AIHUB_IP:3000/api/chat/completions` | Chat completions routed to Open WebUI. |
-| `gateway-lmstudio-chat` | Nginx Gateway | `POST /api/gateway/chat` | `http://AIHUB_IP:8080/lmstudio/v1/chat/completions` | Same LM Studio chat via the shared gateway. |
+| `lmstudio-chat` | LM Studio | `POST /api/chat` | `http://AIHUB_IP:8080/lmstudio/v1/chat/completions` | OpenAI-compatible chat completions via the gateway. |
+| `lmstudio-models` | LM Studio | `POST /api/lmstudio/models` | `http://AIHUB_IP:8080/lmstudio/v1/models` | Fetch the upstream model catalogue through the gateway. |
+| `lmstudio-responses` | LM Studio | `POST /api/lmstudio/responses` | `http://AIHUB_IP:8080/lmstudio/v1/responses` | OpenAI Responses endpoint relayed by the gateway. |
+| `lmstudio-completions` | LM Studio | `POST /api/lmstudio/completions` | `http://AIHUB_IP:8080/lmstudio/v1/completions` | Legacy completions endpoint via the gateway. |
+| `lmstudio-embeddings` | LM Studio | `POST /api/lmstudio/embeddings` | `http://AIHUB_IP:8080/lmstudio/v1/embeddings` | Embeddings vector generation through the gateway. |
+| `kokoro-tts` | Kokoro | `POST /api/tts` | `http://AIHUB_IP:8080/kokoro/v1/audio/speech` | Text-to-Speech returning downloadable MP3 through the gateway. |
+| `faster-whisper-stt` | Faster Whisper REST | `POST /api/stt` | `http://AIHUB_IP:8080/stt/v1/audio/transcriptions` | Speech-to-text via multipart upload through the gateway. |
+| `openwebui-chat` | Open WebUI | `POST /api/openwebui/chat` | `http://AIHUB_IP:8080/openwebui/api/chat/completions` | Chat completions routed to Open WebUI via the gateway. |
+| `gateway-ollama-chat` | Ollama | `POST /api/gateway/ollama/chat` | `http://AIHUB_IP:8080/ollama/v1/chat/completions` | Ollama chat completions routed through the gateway relay. |
 
 Add new services by appending to the list; include metadata, form defaults, and `curl_example`. No template updates are required.
 

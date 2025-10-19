@@ -101,13 +101,13 @@ class AIHubClient:
     # ----- Chat helpers -----------------------------------------------------
     def models_lmstudio(self) -> Dict:
         """List models exposed by the LM Studio OpenAI-compatible server."""
-        url = _build_url(self.config.host, self.config.lmstudio_port, "/v1/models")
+        url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/models")
         resp = self.session.get(url, headers=_headers(), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def chat_lmstudio(self, messages: Iterable[Dict[str, str]]) -> Dict:
-        url = _build_url(self.config.host, self.config.lmstudio_port, "/v1/chat/completions")
+        url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/chat/completions")
         payload = {"model": self.config.lmstudio_model, "messages": list(messages), "stream": False}
         resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
         resp.raise_for_status()
@@ -115,7 +115,7 @@ class AIHubClient:
 
     def respond_lmstudio(self, prompt: str) -> Dict:
         """Call the LM Studio Responses endpoint."""
-        url = _build_url(self.config.host, self.config.lmstudio_port, "/v1/responses")
+        url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/responses")
         payload = {"model": self.config.lmstudio_model, "input": prompt}
         resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
         resp.raise_for_status()
@@ -124,7 +124,7 @@ class AIHubClient:
     def complete_lmstudio(self, prompt: str) -> Dict:
         """Call the LM Studio Completions endpoint."""
         model = self.config.lmstudio_completion_model or self.config.lmstudio_model
-        url = _build_url(self.config.host, self.config.lmstudio_port, "/v1/completions")
+        url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/completions")
         payload = {"model": model, "prompt": prompt, "max_tokens": 120}
         resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
         resp.raise_for_status()
@@ -133,14 +133,14 @@ class AIHubClient:
     def embed_lmstudio(self, text: str) -> Dict:
         """Call the LM Studio Embeddings endpoint."""
         model = self.config.lmstudio_embedding_model or self.config.lmstudio_model
-        url = _build_url(self.config.host, self.config.lmstudio_port, "/v1/embeddings")
+        url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/embeddings")
         payload = {"model": model, "input": text}
         resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def chat_openwebui(self, messages: Iterable[Dict[str, str]]) -> Dict:
-        url = _build_url(self.config.host, self.config.openwebui_port, "/api/chat/completions")
+        url = _build_url(self.config.host, self.config.gateway_port, "/openwebui/api/chat/completions")
         payload = {"model": self.config.ollama_model, "messages": list(messages)}
         resp = self.session.post(
             url,
@@ -159,10 +159,18 @@ class AIHubClient:
         resp.raise_for_status()
         return resp.json()
 
+    def chat_gateway_ollama(self, messages: Iterable[Dict[str, str]]) -> Dict:
+        """Call Ollama through the nginx gateway."""
+        url = _build_url(self.config.host, self.config.gateway_port, "/ollama/v1/chat/completions")
+        payload = {"model": self.config.ollama_model, "messages": list(messages), "stream": False}
+        resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
     # ----- Speech helpers ---------------------------------------------------
     def generate_speech(self, text: str, voice: Optional[str] = None, speed: float = 1.0) -> bytes:
         """Request Kokoro TTS and return the raw MP3 bytes."""
-        url = _build_url(self.config.host, self.config.kokoro_port, "/v1/audio/speech")
+        url = _build_url(self.config.host, self.config.gateway_port, "/kokoro/v1/audio/speech")
         payload = {
             "model": "kokoro",
             "voice": voice or self.config.kokoro_voice,
@@ -182,7 +190,7 @@ class AIHubClient:
         model_override: Optional[str] = None,
     ) -> Dict:
         """Send audio bytes to Faster Whisper STT."""
-        url = _build_url(self.config.host, self.config.stt_port, "/v1/audio/transcriptions")
+        url = _build_url(self.config.host, self.config.gateway_port, "/stt/v1/audio/transcriptions")
         files = {"file": (filename, io.BytesIO(wav_bytes), "audio/wav")}
         data = {"language": language}
         if model_override:
@@ -198,7 +206,7 @@ class AIHubClient:
         model_override: Optional[str] = None,
     ) -> Dict:
         """Upload an audio file (e.g. MP3) to Faster Whisper STT."""
-        url = _build_url(self.config.host, self.config.stt_port, "/v1/audio/transcriptions")
+        url = _build_url(self.config.host, self.config.gateway_port, "/stt/v1/audio/transcriptions")
         mime_type, _ = mimetypes.guess_type(str(path))
         mime_type = mime_type or "application/octet-stream"
         data = {"language": language}
@@ -224,7 +232,7 @@ def run_demo(config: HubConfig) -> None:
         print(json.dumps(models, indent=2))
     print()
 
-    print("LM Studio response:")
+    print("LM Studio response (gateway /lmstudio):")
     lmstudio = client.chat_lmstudio(prompt)
     print(json.dumps(lmstudio, indent=2)[:600])
     print()
@@ -235,13 +243,24 @@ def run_demo(config: HubConfig) -> None:
         status = exc.response.status_code if exc.response is not None else "?"
         print(f"Open WebUI rejected the request (status {status}); ensure API key is set.")
     else:
-        print("Open WebUI response (via Ollama):")
+        print("Open WebUI response (gateway /openwebui):")
         print(json.dumps(webui, indent=2)[:600])
     print()
 
     gateway = client.chat_gateway(prompt)
-    print("Gateway → LM Studio response:")
+    print("Gateway alias → LM Studio response:")
     print(json.dumps(gateway, indent=2)[:600])
+    print()
+
+    try:
+        gateway_ollama = client.chat_gateway_ollama(prompt)
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "?"
+        detail = exc.response.text[:200] if exc.response is not None else str(exc)
+        print(f"Ollama gateway endpoint failed (status {status}): {detail}")
+    else:
+        print("Gateway → Ollama response:")
+        print(json.dumps(gateway_ollama, indent=2)[:600])
     print()
 
     try:

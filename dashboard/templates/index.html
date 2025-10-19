@@ -4,142 +4,170 @@
   <meta charset="utf-8">
   <title>AI Hub Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v={{ static_version }}">
 </head>
 <body>
   <header class="top-bar">
     <div class="brand">
-      <span class="emoji">🤖</span>
       <div>
         <h1>AI Hub Dashboard</h1>
         <p>Hands-on playground & API guide for your AI Hub containers.</p>
       </div>
     </div>
     <div class="environment">
-      <div class="env-item">
-        <span class="label">Hub IP</span>
-        <span class="value">{{ ip }}</span>
-      </div>
-      <div class="env-item">
-        <span class="label">LM Studio</span>
-        <span class="value">{{ ports.lmstudio }}</span>
-      </div>
-      <div class="env-item">
-        <span class="label">Kokoro</span>
-        <span class="value">{{ ports.kokoro }}</span>
-      </div>
-      <div class="env-item">
-        <span class="label">Faster Whisper</span>
-        <span class="value">{{ ports.stt }}</span>
-      </div>
-      <div class="env-item">
-        <span class="label">Open WebUI</span>
-        <span class="value">{{ ports.openwebui }}</span>
-      </div>
-      <div class="env-item">
+      <div class="env-item primary">
         <span class="label">Gateway</span>
-        <span class="value">{{ ports.gateway }}</span>
+        <span class="value"><code>{{ ip }}:{{ ports.gateway }}</code></span>
+      </div>
+      <div class="env-item secondary">
+        <span class="label">Direct Ports</span>
+        <span class="value">LM {{ ports.lmstudio }} · Kokoro {{ ports.kokoro }} · STT {{ ports.stt }} · WebUI {{ ports.openwebui }}</span>
       </div>
     </div>
   </header>
 
-  <main class="layout">
-    <aside class="sidebar">
-      <h2>Services</h2>
-      <nav>
-        <ul>
-          {% for service in services %}
-          <li>
-            <a href="#{{ service.id }}">{{ service.name }}</a>
-            <span class="provider">{{ service.provider }}</span>
-          </li>
-          {% endfor %}
+  <main class="dashboard">
+    <section class="env-section">
+      <div class="env-highlight">
+        <h2>Gateway</h2>
+        <p class="env-value"><code>{{ ip }}:{{ ports.gateway }}</code></p>
+        <p class="env-note">Use this host and port for every remote request.</p>
+      </div>
+      <div class="env-direct">
+        <h3>Direct Ports <span>(optional)</span></h3>
+        <ul class="env-grid">
+          <li><span>LM Studio</span><code>{{ ports.lmstudio }}</code></li>
+          <li><span>Kokoro</span><code>{{ ports.kokoro }}</code></li>
+          <li><span>Faster Whisper</span><code>{{ ports.stt }}</code></li>
+          <li><span>Open WebUI</span><code>{{ ports.openwebui }}</code></li>
         </ul>
-      </nav>
-      <section class="quick-help">
-        <h3>How To Use</h3>
-        <p>Each card includes a quick summary, request details, a ready-to-run cURL snippet, and an interactive form you can test instantly.</p>
-        <p>Hit <strong>Copy</strong> to grab commands, or use the playground to call the proxied endpoints via this dashboard.</p>
-      </section>
-    </aside>
+      </div>
+    </section>
 
-    <section class="content">
+    <nav class="service-nav" aria-label="Services">
       {% for service in services %}
-      <article id="{{ service.id }}" class="service-card">
-        <header class="service-header">
-          <div>
-            <h2>{{ service.name }}</h2>
-            <p class="summary">{{ service.summary }}</p>
-          </div>
-          <span class="badge">{{ service.provider }}</span>
-        </header>
+      <button class="service-chip{% if loop.first %} active{% endif %}" type="button" data-service="{{ service.id }}">
+        <span class="chip-dot" data-service-status="{{ service.id }}" data-state="unknown" aria-hidden="true"></span>
+        <span class="chip-label">{{ service.name }}</span>
+      </button>
+      {% endfor %}
+    </nav>
 
-        <div class="service-sections">
-          <div class="service-details">
-            <h3>Request</h3>
-            <dl class="meta">
-              <div>
-                <dt>Category</dt>
-                <dd>{{ service.category }}</dd>
-              </div>
-              <div>
-                <dt>Method</dt>
-                <dd><code>{{ service.method }}</code></dd>
-              </div>
-              <div>
-                <dt>Local Endpoint</dt>
-                <dd><code>{{ service.local_endpoint }}</code></dd>
-              </div>
-              <div>
-                <dt>Target</dt>
-                <dd><code>{{ service.upstream_endpoint }}</code></dd>
-              </div>
-            </dl>
+    <section class="service-list">
+      {% for service in services %}
+      <article class="service-card">
+        <button
+          class="service-toggle"
+          type="button"
+          data-target="{{ service.id }}-panel"
+          data-service="{{ service.id }}"
+          aria-expanded="{{ 'true' if loop.first else 'false' }}"
+        >
+          <span class="status-dot" data-service-status="{{ service.id }}" data-state="unknown" aria-hidden="true"></span>
+          <span class="service-toggle-text">
+            <span class="service-name">{{ service.name }}</span>
+            <span class="service-provider">{{ service.provider }}</span>
+          </span>
+          <span class="toggle-icon" aria-hidden="true"></span>
+        </button>
 
-            {% if service.inputs %}
-            <h3>Inputs</h3>
-            <ul class="inputs">
-              {% for input in service.inputs %}
-              <li>
-                <strong>{{ input.field }}</strong>
-                <span class="type">{{ input.type }}</span>
-                <span class="desc">{{ input.description }}</span>
-              </li>
-              {% endfor %}
-            </ul>
-            {% endif %}
+        <div id="{{ service.id }}-panel" class="service-panel" data-service="{{ service.id }}" {% if not loop.first %}hidden{% endif %}>
+          <header class="service-header">
+            <div>
+              <h2>{{ service.name }}</h2>
+              <p class="summary">{{ service.summary }}</p>
+            </div>
+            <span class="badge">{{ service.provider }}</span>
+          </header>
 
-            {% if service.notes %}
-            <h3>Notes</h3>
-            <ul class="notes">
-              {% for note in service.notes %}
-              <li>{{ note }}</li>
-              {% endfor %}
-            </ul>
-            {% endif %}
-          </div>
+          <div class="service-sections">
+            <div class="service-details">
+              <h3>Request</h3>
+              <dl class="meta">
+                <div>
+                  <dt>Category</dt>
+                  <dd>{{ service.category }}</dd>
+                </div>
+                <div>
+                  <dt>Method</dt>
+                  <dd><code>{{ service.method }}</code></dd>
+                </div>
+                <div>
+                  <dt>Dashboard Proxy</dt>
+                  <dd><code>{{ service.local_endpoint }}</code></dd>
+                </div>
+                <div>
+                  <dt>Gateway Target</dt>
+                  <dd><code>{{ service.upstream_endpoint }}</code></dd>
+                </div>
+              </dl>
 
-          <div class="code-examples">
-            <h3>Sample Payload</h3>
-            <div class="code-scroll">
-              <pre class="code-block">{{ service.sample_payload | tojson(indent=2) }}</pre>
+              {% if service.inputs %}
+              <h3>Inputs</h3>
+              <ul class="inputs">
+                {% for input in service.inputs %}
+                <li>
+                  <strong>{{ input.field }}</strong>
+                  <span class="type">{{ input.type }}</span>
+                  <span class="desc">{{ input.description }}</span>
+                </li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+
+              {% if service.notes %}
+              <h3>Notes</h3>
+              <ul class="notes">
+                {% for note in service.notes %}
+                <li>{{ note }}</li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+
+              <div class="live-section" data-service-info="{{ service.id }}" data-state="idle">
+                <div class="live-header">
+                  <h3>Live Data</h3>
+                  <button class="live-refresh" type="button" data-service="{{ service.id }}">Refresh</button>
+                </div>
+                <div class="live-body">
+                  <p class="placeholder">Tap refresh to load gateway data.</p>
+                </div>
+              </div>
             </div>
 
-            <div class="curl-block">
-              <div class="curl-header">
-                <h3>cURL Example</h3>
-                <button class="copy-button" type="button" data-copy="{{ service.curl_example | replace('\n', '&#10;') | replace('\"', '&quot;') }}">Copy</button>
-              </div>
+            <div class="code-examples">
+              <h3>Sample Payload</h3>
               <div class="code-scroll">
-                <pre class="code-block">{{ service.curl_example }}</pre>
+                <pre class="code-block">{{ service.sample_payload | tojson(indent=2) }}</pre>
               </div>
+
+              <div class="curl-block">
+                <div class="curl-header">
+                  <h3>cURL Example</h3>
+                  <button class="copy-button" type="button" data-copy="{{ service.curl_example | replace('\n', '&#10;') | replace('\"', '&quot;') }}">Copy</button>
+                </div>
+                <div class="code-scroll">
+                  <pre class="code-block">{{ service.curl_example }}</pre>
+                </div>
+              </div>
+
+              {% if service.python_example %}
+              <div class="curl-block">
+                <div class="curl-header">
+                  <h3>Python Example</h3>
+                  <button class="copy-button" type="button" data-copy="{{ service.python_example | replace('\n', '&#10;') | replace('\"', '&quot;') }}">Copy</button>
+                </div>
+                <div class="code-scroll">
+                  <pre class="code-block">{{ service.python_example }}</pre>
+                </div>
+              </div>
+              {% endif %}
             </div>
           </div>
-        </div>
 
-        <div class="playground">
-          <h3>Playground</h3>
-          <form class="try-form" data-service="{{ service.id }}" data-endpoint="{{ service.local_endpoint }}" data-method="{{ service.method }}" {% if service.id == "faster-whisper-stt" %}enctype="multipart/form-data"{% endif %}>
+          <div class="playground">
+            <h3>Playground</h3>
+            <form class="try-form" data-service="{{ service.id }}" data-endpoint="{{ service.local_endpoint }}" data-method="{{ service.method }}" {% if service.id == "faster-whisper-stt" %}enctype="multipart/form-data"{% endif %}>
             {% if service.id == "lmstudio-chat" %}
             <label>
               <span>Model</span>
@@ -153,6 +181,40 @@
             {% elif service.id == "lmstudio-models" %}
             <p class="hint">Fetch the model catalogue directly from LM Studio.</p>
             <button type="submit">List Models</button>
+            {% elif service.id == "lmstudio-responses" %}
+            <label>
+              <span>Model</span>
+              <input type="text" name="model" value="{{ service.form_defaults.model }}" required>
+            </label>
+            <label>
+              <span>Prompt</span>
+              <textarea name="prompt" rows="4" required>{{ service.form_defaults.prompt }}</textarea>
+            </label>
+            <button type="submit">Call Responses API</button>
+            {% elif service.id == "lmstudio-completions" %}
+            <label>
+              <span>Model</span>
+              <input type="text" name="model" value="{{ service.form_defaults.model }}" required>
+            </label>
+            <label>
+              <span>Prompt</span>
+              <textarea name="prompt" rows="4" required>{{ service.form_defaults.prompt }}</textarea>
+            </label>
+            <label class="inline">
+              <span>Max Tokens</span>
+              <input type="text" name="max_tokens" value="{{ service.form_defaults.max_tokens }}">
+            </label>
+            <button type="submit">Call Completions API</button>
+            {% elif service.id == "lmstudio-embeddings" %}
+            <label>
+              <span>Model</span>
+              <input type="text" name="model" value="{{ service.form_defaults.model }}" required>
+            </label>
+            <label>
+              <span>Text</span>
+              <textarea name="text" rows="3" required>{{ service.form_defaults.text }}</textarea>
+            </label>
+            <button type="submit">Generate Embedding</button>
             {% elif service.id == "kokoro-tts" %}
             <label>
               <span>Text</span>
@@ -179,7 +241,7 @@
               <textarea name="message" rows="4" required>{{ service.form_defaults.message }}</textarea>
             </label>
             <button type="submit">Send to Open WebUI</button>
-            {% elif service.id == "gateway-lmstudio-chat" %}
+            {% elif service.id == "gateway-ollama-chat" %}
             <label>
               <span>Model</span>
               <input type="text" name="model" value="{{ service.form_defaults.model }}" required>
@@ -188,11 +250,12 @@
               <span>Message</span>
               <textarea name="message" rows="4" required>{{ service.form_defaults.message }}</textarea>
             </label>
-            <button type="submit">Send via Gateway</button>
+            <button type="submit">Send to Ollama via Gateway</button>
             {% endif %}
-          </form>
-          <div class="response" id="{{ service.id }}-response">
-            <p class="placeholder">Run a request to see the response.</p>
+            </form>
+            <div class="response" id="{{ service.id }}-response">
+              <p class="placeholder">Run a request to see the response.</p>
+            </div>
           </div>
         </div>
       </article>
@@ -204,6 +267,6 @@
     <p>Extend this dashboard by adding new services to <code>app.py</code> &mdash; they will automatically appear here.</p>
   </footer>
 
-  <script src="/static/js/main.js"></script>
+  <script src="/static/js/main.js?v={{ static_version }}"></script>
 </body>
 </html>
