@@ -1,0 +1,34 @@
+# General Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.Python
+
+# Environments
+.venv/
+.venv-client/
+env/
+venv/
+
+# IDE files
+.vscode/
+.idea/
+
+# macOS cruft
+.DS_Store
+
+# Logs and temporary outputs
+*.log
+*.sqlite3
+*.db
+
+# Dashboard runtime artifacts
+dashboard/static/tts_outputs/
+dashboard/__pycache__/
+
+# Local data caches
+faster-whisper-data/
+openwebui-data/
+proxy/logs/
