@@ -19,9 +19,41 @@ import sys
 import time
 import wave
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Iterable, List, Optional
 
 import requests
+
+
+def _load_env_defaults() -> None:
+    """Populate os.environ from the repository-level .env if available."""
+    root_dir = Path(__file__).resolve().parents[2]
+    candidates = [root_dir / ".env"]
+    for env_path in candidates:
+        if not env_path.is_file():
+            continue
+        try:
+            for raw_line in env_path.read_text().splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[len("export ") :].strip()
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if not key or key in os.environ:
+                    continue
+                if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+                    value = value[1:-1]
+                os.environ[key] = value
+        except OSError:
+            continue
+
+
+_load_env_defaults()
 
 
 def _resolve_dashboard_key(explicit: Optional[str] = None) -> Optional[str]:
