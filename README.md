@@ -1,6 +1,6 @@
 # AI Hub Workspace
 
-Modern LLM stacks rarely live in isolation. This repository packages the tooling used to operate the “AI Hub” gateway on a single machine, exposing local services like LM Studio, Ollama, Kokoro TTS, and Faster Whisper to teammates over a secure network. The dashboard, scripts, and proxy are designed to be publish-ready so you can share the project publicly without leaking private infrastructure.
+Modern LLM stacks rarely live in isolation. This repository packages the tooling used to operate the “AI Hub” gateway on a single machine, exposing local services like LM Studio, Ollama, Kokoro TTS, and Faster Whisper to teammates over a secure network. The dashboard, scripts, and proxy are designed to be publish-ready so you can share the project publicly without leaking private infrastructure. The setup plays nicely with tailnet-style connectivity (e.g., Tailscale) so you can keep everything private while still sharing APIs with trusted users.
 
 ---
 
@@ -10,7 +10,8 @@ Modern LLM stacks rarely live in isolation. This repository packages the tooling
 - **Agent-Friendly Dashboard** – FastAPI UI documents every service, provides live payload builders, and enforces optional API keys.
 - **Reference Clients** – Python scripts under `dashboard/scripts/` exercise all endpoints, now automatically loading `.env` for consistent configuration.
 - **Audio Pipeline** – Kokoro TTS and Faster Whisper REST share the same OpenAI-compatible schema for easy swapping in agent workflows.
-- **Docker OR Bare Metal** – Containers orchestrate the full stack, but the utilities run fine on a local virtual environment without Docker.
+- **Tailnet Friendly** – Works seamlessly behind Tailscale or a similar mesh VPN; dashboard defaults to the `LAN_IP`/`AIHUB_IP` advertised in `.env`.
+- **Docker First** – Containers orchestrate the full stack, while helper scripts run locally for development and automation.
 
 ---
 
@@ -94,6 +95,14 @@ flowchart LR
    python dashboard/scripts/connectivity_check.py
    ```
    The script now reads `.env` automatically. Use CLI flags (`--ip`, `--lmstudio-model`, etc.) to override defaults.
+
+---
+
+## Remote Access Notes
+
+- **VPN / Tunnel** – The gateway is typically exposed via Tailscale. Set `LAN_IP` (or `AIHUB_IP`) to the machine’s tailnet address so remote peers can reach the services securely.
+- **Mobile Clients** – Open source apps like [Cogwheel Conduit](https://github.com/cogwheel0/conduit) can connect to the Open WebUI endpoint while you’re on the move, using the same gateway URL and API key.
+- **Development Focus** – The scripts and dashboard target remote endpoints so you can build and test applications against your own hosted models without moving them into production infrastructure.
 
 ---
 
