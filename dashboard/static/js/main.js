@@ -9,9 +9,47 @@ const apiKeyForm = document.querySelector(".api-key-form");
 const apiKeyInput = document.querySelector(".api-key-input");
 const apiKeyStatus = document.querySelector("[data-api-key-status]");
 const apiKeyClear = document.querySelector(".api-key-clear");
+const viewButtons = Array.from(document.querySelectorAll("[data-view-button]"));
+const viewPanels = Array.from(document.querySelectorAll(".view-panel"));
 const LOCAL_STORAGE_KEY = "dashboardApiKey";
 let apiKey = localStorage.getItem(LOCAL_STORAGE_KEY) || "";
 let initialActiveService = null;
+
+let activeView = (viewButtons.find((btn) => btn.classList.contains("active"))?.dataset.viewButton) || "services";
+
+const monitoringRefreshButton = document.querySelector("[data-monitoring-refresh]");
+const monitoringWindowSelect = document.querySelector("[data-monitoring-window]");
+const monitoringStatus = document.querySelector("[data-monitoring-status]");
+const monitoringMetrics = {
+  total: document.querySelector("[data-metric-total]"),
+  clients: document.querySelector("[data-metric-clients]"),
+  keys: document.querySelector("[data-metric-keys]"),
+  flagged: document.querySelector("[data-metric-flagged]"),
+};
+const monitoringLists = {
+  statuses: document.querySelector("[data-monitoring-statuses]"),
+  apiKeys: document.querySelector("[data-monitoring-api-keys]"),
+  clients: document.querySelector("[data-monitoring-clients]"),
+  endpoints: document.querySelector("[data-monitoring-endpoints]"),
+};
+const monitoringAlertsContainer = document.querySelector("[data-monitoring-alerts]");
+const monitoringTableBody = document.querySelector("[data-monitoring-table-body]");
+
+const monitoringActive = Boolean(monitoringStatus);
+const MONITORING_SUMMARY_LIMIT = 2000;
+const MONITORING_EVENTS_LIMIT = 200;
+const FLAG_LABELS = {
+  upstream_error: { label: "Upstream error", tone: "danger" },
+  client_error: { label: "Client error", tone: "warning" },
+  no_api_key: { label: "Missing API key", tone: "warning" },
+  suspicious_path: { label: "Suspicious path", tone: "danger" },
+  very_slow: { label: "Slow response", tone: "info" },
+};
+
+const numberFormatter = new Intl.NumberFormat();
+let monitoringWindow = monitoringWindowSelect ? Number(monitoringWindowSelect.value) || 60 : 60;
+let monitoringLoading = false;
+let monitoringViewActive = activeView === "monitoring";
 
 function setApiKey(newKey) {
   apiKey = newKey.trim();
@@ -22,6 +60,9 @@ function setApiKey(newKey) {
   }
   updateApiKeyStatus();
   fetchStatuses();
+  if (monitoringActive && monitoringViewActive) {
+    loadMonitoringData();
+  }
 }
 
 function updateApiKeyStatus() {
@@ -62,6 +103,446 @@ function authFetch(url, options = {}) {
     opts.headers = headers;
   }
   return fetch(url, opts);
+}
+
+function formatNumber(value) {
+  if (typeof value !== "number") {
+    value = Number(value || 0);
+  }
+  return numberFormatter.format(value);
+}
+
+function abbreviateApiKey(key) {
+  if (!key || key === "(none)") {
+    return "No key";
+  }
+  if (key.length <= 12) {
+    return key;
+  }
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
+function formatDuration(ms) {
+  if (ms == null || Number.isNaN(ms)) {
+    return "—";
+  }
+  if (ms < 1000) {
+    return `${ms} ms`;
+  }
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+function formatTimestamp(iso) {
+  if (!iso) {
+    return "(unknown)";
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return date.toLocaleString();
+}
+
+function formatRelativeTime(iso) {
+  if (!iso) {
+    return "";
+  }
+  const now = Date.now();
+  const value = new Date(iso).getTime();
+  if (Number.isNaN(value)) {
+    return "";
+  }
+  const diffMs = now - value;
+  if (diffMs < 0) {
+    return "in the future";
+  }
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return `${minutes} min${minutes === 1 ? "" : "s"} ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+function setActiveView(view) {
+  if (!view) {
+    return;
+  }
+  activeView = view;
+  viewButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.viewButton === view);
+  });
+  viewPanels.forEach((panel) => {
+    const panelView = panel.dataset.view;
+    if (!panelView) {
+      return;
+    }
+    if (panelView === view) {
+      panel.removeAttribute("hidden");
+    } else {
+      panel.setAttribute("hidden", "true");
+    }
+  });
+  monitoringViewActive = view === "monitoring";
+  if (monitoringActive && monitoringViewActive) {
+    loadMonitoringData();
+  }
+}
+
+function ensureListContent(container, items, builder, emptyMessage) {
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  if (!items || items.length === 0) {
+    const li = document.createElement("li");
+    li.className = "placeholder";
+    li.textContent = emptyMessage;
+    container.append(li);
+    return;
+  }
+  items.forEach((item) => {
+    const node = builder(item);
+    if (node) {
+      container.append(node);
+    }
+  });
+}
+
+function renderStatusList(statusFamilies) {
+  const items = Object.entries(statusFamilies || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  ensureListContent(
+    monitoringLists.statuses,
+    items,
+    ([code, count]) => {
+      const li = document.createElement("li");
+      const label = document.createElement("strong");
+      label.textContent = code;
+      const value = document.createElement("span");
+      value.textContent = formatNumber(count);
+      li.append(label, value);
+      return li;
+    },
+    "No requests tracked."
+  );
+}
+
+function renderTopApiKeys(apiKeys) {
+  ensureListContent(
+    monitoringLists.apiKeys,
+    apiKeys,
+    (item) => {
+      const li = document.createElement("li");
+      const label = document.createElement("strong");
+      label.textContent = abbreviateApiKey(item.api_key);
+      if (item.is_anonymous) {
+        label.textContent = "No key";
+      }
+      const value = document.createElement("span");
+      value.textContent = formatNumber(item.count);
+      li.append(label, value);
+      return li;
+    },
+    "No API key activity."
+  );
+}
+
+function renderTopClients(clients) {
+  ensureListContent(
+    monitoringLists.clients,
+    clients,
+    (client) => {
+      const li = document.createElement("li");
+      const label = document.createElement("strong");
+      const scope = client.network_scope ? ` (${client.network_scope})` : "";
+      label.textContent = `${client.client}${scope}`;
+      const value = document.createElement("span");
+      value.textContent = formatNumber(client.count);
+      li.append(label, value);
+      return li;
+    },
+    "No client activity."
+  );
+}
+
+function renderTopEndpoints(endpoints) {
+  ensureListContent(
+    monitoringLists.endpoints,
+    endpoints,
+    (endpoint) => {
+      const li = document.createElement("li");
+      const label = document.createElement("strong");
+      label.textContent = endpoint.endpoint;
+      const value = document.createElement("span");
+      value.textContent = formatNumber(endpoint.count);
+      li.append(label, value);
+      return li;
+    },
+    "No endpoint activity."
+  );
+}
+
+function renderMonitoringAlerts(alerts) {
+  if (!monitoringAlertsContainer) {
+    return;
+  }
+  monitoringAlertsContainer.innerHTML = "";
+  if (!alerts || alerts.length === 0) {
+    const p = document.createElement("p");
+    p.className = "placeholder";
+    p.textContent = "No alerts detected.";
+    monitoringAlertsContainer.append(p);
+    return;
+  }
+  alerts.forEach((alert) => {
+    const item = document.createElement("div");
+    const tone = alert.level || "info";
+    item.className = `alert-item ${tone}`;
+    const title = document.createElement("h4");
+    title.textContent = alert.message || alert.type || "Alert";
+    item.append(title);
+    const details = [];
+    if (alert.client) {
+      details.push(`Client ${alert.client}`);
+    }
+    if (alert.count != null) {
+      details.push(`${alert.count} events`);
+    }
+    if (alert.window_minutes) {
+      details.push(`Window ${alert.window_minutes} min`);
+    }
+    if (alert.type && alert.type !== alert.message) {
+      details.push(alert.type.replace(/_/g, " "));
+    }
+    if (details.length > 0) {
+      const meta = document.createElement("p");
+      meta.textContent = details.join(" · ");
+      item.append(meta);
+    }
+    monitoringAlertsContainer.append(item);
+  });
+}
+
+function resetMonitoringMetrics() {
+  Object.values(monitoringMetrics).forEach((el) => {
+    if (el) {
+      el.textContent = "—";
+    }
+  });
+  renderStatusList({});
+  renderTopApiKeys([]);
+  renderTopClients([]);
+  renderTopEndpoints([]);
+  renderMonitoringAlerts([]);
+  if (monitoringTableBody) {
+    monitoringTableBody.innerHTML = "";
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 7;
+    cell.className = "placeholder";
+    cell.textContent = "No monitoring data.";
+    row.append(cell);
+    monitoringTableBody.append(row);
+  }
+}
+
+function renderMonitoringSummary(summary) {
+  if (!monitoringActive) {
+    return;
+  }
+  if (!summary) {
+    resetMonitoringMetrics();
+    return;
+  }
+  const totals = summary.totals || {};
+  if (monitoringMetrics.total) {
+    monitoringMetrics.total.textContent = formatNumber(totals.requests || 0);
+  }
+  if (monitoringMetrics.clients) {
+    monitoringMetrics.clients.textContent = formatNumber(totals.unique_clients || 0);
+  }
+  if (monitoringMetrics.keys) {
+    monitoringMetrics.keys.textContent = formatNumber(totals.unique_api_keys || 0);
+  }
+  if (monitoringMetrics.flagged) {
+    monitoringMetrics.flagged.textContent = formatNumber(totals.flagged_requests || 0);
+  }
+  renderStatusList(summary.status_families || {});
+  renderTopApiKeys(summary.top_api_keys || []);
+  renderTopClients(summary.top_clients || []);
+  renderTopEndpoints(summary.top_endpoints || []);
+  renderMonitoringAlerts(summary.alerts || []);
+}
+
+function buildFlagBadges(flags) {
+  if (!flags || flags.length === 0) {
+    return null;
+  }
+  const wrapper = document.createElement("div");
+  wrapper.className = "flags";
+  flags.forEach((flag) => {
+    const info = FLAG_LABELS[flag];
+    const span = document.createElement("span");
+    span.className = "flag";
+    if (info?.tone) {
+      span.classList.add(info.tone);
+    }
+    span.textContent = info?.label || flag;
+    wrapper.append(span);
+  });
+  return wrapper;
+}
+
+function renderMonitoringEvents(data) {
+  if (!monitoringTableBody) {
+    return;
+  }
+  monitoringTableBody.innerHTML = "";
+  const events = Array.isArray(data?.events) ? [...data.events].reverse() : [];
+  if (events.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 7;
+    cell.className = "placeholder";
+    cell.textContent = apiKey
+      ? "No gateway traffic observed in the selected window."
+      : "Set the dashboard API key to load monitoring data.";
+    row.append(cell);
+    monitoringTableBody.append(row);
+    return;
+  }
+  events.forEach((event) => {
+    const row = document.createElement("tr");
+    if (event.is_flagged) {
+      row.classList.add("is-flagged");
+    }
+    const timeCell = document.createElement("td");
+    const timePrimary = document.createElement("div");
+    timePrimary.textContent = formatTimestamp(event.timestamp);
+    const timeSecondary = document.createElement("div");
+    timeSecondary.className = "muted";
+    timeSecondary.textContent = formatRelativeTime(event.timestamp);
+    timeCell.append(timePrimary, timeSecondary);
+
+    const clientCell = document.createElement("td");
+    clientCell.textContent = event.client_ip || "-";
+
+    const scopeCell = document.createElement("td");
+    scopeCell.textContent = event.network_scope || "-";
+
+    const apiKeyCell = document.createElement("td");
+    const apiTag = document.createElement("span");
+    apiTag.className = "tag";
+    if (!event.api_key || event.api_key === "(none)") {
+      apiTag.classList.add("anonymous");
+      apiTag.textContent = "No key";
+    } else {
+      apiTag.textContent = abbreviateApiKey(event.api_key);
+    }
+    apiKeyCell.append(apiTag);
+
+    const endpointCell = document.createElement("td");
+    const pathLine = document.createElement("div");
+    const method = event.request_method || "GET";
+    const endpoint = event.request_path || event.request_uri || "/";
+    pathLine.textContent = `${method} ${endpoint}`;
+    endpointCell.append(pathLine);
+    const flagBadges = buildFlagBadges(event.flags);
+    if (flagBadges) {
+      endpointCell.append(flagBadges);
+    }
+
+    const statusCell = document.createElement("td");
+    const statusLabel = event.status != null ? `${event.status}` : "-";
+    statusCell.textContent = event.status_family
+      ? `${statusLabel} (${event.status_family})`
+      : statusLabel;
+
+    const durationCell = document.createElement("td");
+    durationCell.textContent = formatDuration(event.request_time_ms);
+
+    row.append(timeCell, clientCell, scopeCell, apiKeyCell, endpointCell, statusCell, durationCell);
+    monitoringTableBody.append(row);
+  });
+}
+
+async function loadMonitoringData() {
+  if (!monitoringActive) {
+    return;
+  }
+  if (!monitoringViewActive) {
+    return;
+  }
+  if (!apiKey) {
+    monitoringStatus.textContent = "Set the dashboard API key to load monitoring data.";
+    renderMonitoringSummary(null);
+    renderMonitoringEvents({});
+    return;
+  }
+  if (monitoringLoading) {
+    return;
+  }
+  monitoringLoading = true;
+  monitoringStatus.textContent = "Loading gateway insights…";
+  try {
+    const summaryPromise = authFetch(`/api/monitoring/summary?limit=${MONITORING_SUMMARY_LIMIT}`);
+    const query = new URLSearchParams({ limit: String(MONITORING_EVENTS_LIMIT) });
+    if (monitoringWindow && Number.isFinite(monitoringWindow)) {
+      query.set("minutes", String(monitoringWindow));
+    }
+    const eventsPromise = authFetch(`/api/monitoring/events?${query.toString()}`);
+
+    const [summaryResponse, eventsResponse] = await Promise.all([summaryPromise, eventsPromise]);
+
+    if (!summaryResponse.ok || !eventsResponse.ok) {
+      const status = summaryResponse.status || eventsResponse.status;
+      if (status === 401 || status === 403) {
+        throw new Error("Invalid or missing dashboard API key.");
+      }
+      const detail = !summaryResponse.ok
+        ? await summaryResponse.text()
+        : await eventsResponse.text();
+      throw new Error(detail || `Monitoring HTTP ${status}`);
+    }
+
+    const summaryData = await summaryResponse.json();
+    const eventsData = await eventsResponse.json();
+
+    renderMonitoringSummary(summaryData);
+    renderMonitoringEvents(eventsData);
+
+    const parts = [];
+    if (eventsData.window_minutes) {
+      parts.push(`Window: last ${eventsData.window_minutes} min`);
+    } else if (summaryData.time_window?.minutes) {
+      parts.push(`Window: ${summaryData.time_window.minutes} min`);
+    }
+    if (eventsData.total && eventsData.total > eventsData.count) {
+      parts.push(`Showing ${eventsData.count} of ${eventsData.total} events`);
+    } else {
+      parts.push(`Events: ${eventsData.count}`);
+    }
+    if (summaryData.totals?.requests != null) {
+      parts.push(`Requests counted: ${formatNumber(summaryData.totals.requests)}`);
+    }
+    if (eventsData.truncated) {
+      parts.push("Log truncated to recent entries");
+    }
+    monitoringStatus.textContent = parts.join(" · ");
+  } catch (error) {
+    monitoringStatus.textContent = `Monitoring unavailable: ${error.message || error}`;
+    renderMonitoringSummary(null);
+    renderMonitoringEvents({});
+  } finally {
+    monitoringLoading = false;
+  }
 }
 
 function getServiceIdFromToggle(button) {
@@ -188,6 +669,15 @@ serviceChips.forEach((chip) => {
   });
 });
 
+viewButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const view = button.dataset.viewButton;
+    setActiveView(view || "services");
+  });
+});
+
+setActiveView(activeView);
+
 function setStatusDot(serviceId, state, detail) {
   statusDots
     .filter((dot) => dot.dataset.serviceStatus === serviceId)
@@ -234,6 +724,31 @@ async function fetchStatuses() {
 }
 
 setInterval(fetchStatuses, 60000);
+
+if (monitoringRefreshButton) {
+  monitoringRefreshButton.addEventListener("click", () => {
+    if (monitoringViewActive) {
+      loadMonitoringData();
+    }
+  });
+}
+
+if (monitoringWindowSelect) {
+  monitoringWindowSelect.addEventListener("change", () => {
+    monitoringWindow = Number(monitoringWindowSelect.value) || 60;
+    if (monitoringViewActive) {
+      loadMonitoringData();
+    }
+  });
+}
+
+if (monitoringActive) {
+  setInterval(() => {
+    if (apiKey && monitoringViewActive) {
+      loadMonitoringData();
+    }
+  }, 60000);
+}
 
 async function loadServiceInfo(serviceId, section, force = false) {
   if (!section || !serviceId) {

@@ -8,6 +8,7 @@ Modern LLM stacks rarely live in isolation. This repository packages the tooling
 
 - **Unified Gateway** – nginx fronts each upstream (`/lmstudio/`, `/ollama/`, `/kokoro/`, `/openwebui/`, `/stt/`), keeping private ports off the network.
 - **Agent-Friendly Dashboard** – FastAPI UI documents every service, provides live payload builders, and enforces optional API keys.
+- **Gateway Monitoring** – Built-in observability surfaces nginx access logs, highlights active API keys, and flags suspicious traffic.
 - **Reference Clients** – Python scripts under `dashboard/scripts/` exercise all endpoints, now automatically loading `.env` for consistent configuration.
 - **Audio Pipeline** – Kokoro TTS and Faster Whisper REST share the same OpenAI-compatible schema for easy swapping in agent workflows.
 - **Tailnet Friendly** – Works seamlessly behind Tailscale or a similar mesh VPN; dashboard defaults to the `LAN_IP`/`AIHUB_IP` advertised in `.env`.
@@ -81,6 +82,7 @@ flowchart LR
 
 2. **Run the full stack with Docker:**
    ```bash
+   mkdir -p dashboard/data
    docker compose up -d
    docker ps --format 'table {{.Names}}\t{{.Status}}'
    ```
@@ -95,6 +97,21 @@ flowchart LR
    python dashboard/scripts/connectivity_check.py
    ```
    The script now reads `.env` automatically. Use CLI flags (`--ip`, `--lmstudio-model`, etc.) to override defaults.
+
+---
+
+## Gateway Monitoring
+
+The dashboard now ships with a monitoring section that parses the nginx JSON access log exposed by the proxy container. Key capabilities:
+
+- **Live Activity Table** – See who connected (client IP + network scope), which API keys were used, and request latency.
+- **Aggregated Metrics** – Totals for requests, unique clients/API keys, status-family breakdowns, popular endpoints, and per-minute volume.
+- **Alert Heuristics** – Automatic warnings for repeated client errors, missing API keys, or sudden request bursts that may indicate an attack.
+- **SQLite Backing Store** – Every parsed log entry is persisted to `MONITORING_DB_PATH`, so metrics survive container restarts and you can run ad-hoc SQL queries.
+
+To enable the view, keep the default log mount from `docker-compose.yml` (`./proxy/logs:/var/log/nginx:ro`). The dashboard reads `/var/log/nginx/access.log` by default; override with `NGINX_ACCESS_LOG` if your logfile lives elsewhere. Tweaks such as `MONITORING_ALERT_WINDOW_MIN`, `MONITORING_RATE_THRESHOLD`, and `MONITORING_CLIENT_ERROR_THRESHOLD` allow you to tune detection without editing code.
+
+Because the monitoring view relies on the dashboard API key, make sure to paste the key into the “Dashboard API Key” field at the top of the UI. The summary auto-refreshes every minute and can be reloaded on demand via the “Refresh” button. If nginx is still emitting the legacy combined log format, the dashboard will ingest it as well (minus API-key visibility) and persist the entries to SQLite.
 
 ---
 
@@ -149,7 +166,17 @@ All requests accept `X-API-Key` when the dashboard is locked down. Additional pr
 |--------------------------|---------------------------------------------------------------------------------------------|
 | `LAN_IP` / `AIHUB_IP`    | Host IP advertised to clients; defaults to `127.0.0.1`.                                     |
 | `GATEWAY_PORT`           | nginx gateway port (default `8080`).                                                        |
-| `LMSTUDIO_MODEL`         | Default model for LM Studio chat/completion calls (`qwen3-0.6b` by default).                |
+| `NGINX_ACCESS_LOG`       | Absolute path to the JSON-formatted access log (default `/var/log/nginx/access.log`).      |
+| `MONITORING_MAX_SCAN`    | Maximum number of log lines scanned per refresh (default `10000`).                          |
+| `MONITORING_DEFAULT_LIMIT` | Default number of events returned by the monitoring API (default `200`).                |
+| `MONITORING_ALERT_WINDOW_MIN` | Minutes of history evaluated for automated alerts (default `60`).                     |
+| `MONITORING_RATE_THRESHOLD`   | Requests per client within the alert window that trigger a burst warning (default `120`).|
+| `MONITORING_CLIENT_ERROR_THRESHOLD` | Client error count within the alert window before a warning is raised (default `12`). |
+| `MONITORING_MISSING_KEY_THRESHOLD` | Number of missing API-key requests in the alert window before reporting (default `25`). |
+| `MONITORING_DB_PATH`     | SQLite destination for persisted access events (default `<dashboard>/data/monitoring.sqlite3`). |
+| `MONITORING_STATE_PATH`  | JSON file tracking ingestion offsets (default `<dashboard>/data/monitoring_state.json`).     |
+| `MONITORING_MAX_AGE_DAYS`| Automatic retention window for stored events; set to `0` to disable (default `30`).          |
+| `LMSTUDIO_MODEL`         | Default model for LM Studio chat/completion calls (`qwen3-06.b` by default).                |
 | `LMSTUDIO_EMBEDDING_MODEL`| Embedding model used by demos (`text-embedding-qwen3-embedding-0.6b`).                    |
 | `OLLAMA_MODEL`           | Default Ollama/Open WebUI model (`gemma3:4b`).                                              |
 | `KOKORO_VOICE`           | Default Kokoro voice (`af_bella`).                                                          |
@@ -164,6 +191,7 @@ Any value present in `.env` is now automatically injected into the helper script
 ## Troubleshooting
 
 - **401 from Open WebUI** – Set `OPENWEBUI_API_KEY` in `.env` or pass `--openwebui-api-key`. The gateway relays headers transparently.
+- **Monitoring view empty** – Confirm the dashboard container mounts the nginx log directory read-only (`./proxy/logs:/var/log/nginx`) and restart the proxy after updating `proxy/nginx.conf` so the JSON format is active. The dashboard will fall back to parsing the combined log format if necessary (without API-key metadata).
 - **Embeddings 404** – Ensure the embedding-capable model is actually “served” inside LM Studio. Re-download if loading was interrupted.
 - **Audio uploads rejected** – FastAPI endpoints allow up to `200 MB` for STT and `50 MB` for TTS through nginx; adjust `proxy/nginx.conf` if needed.
 - **Gateway reachable but empty responses** – Run `python dashboard/scripts/connectivity_check.py --mode all` to confirm each upstream is healthy, then inspect container logs (`docker compose logs -f <service>`).

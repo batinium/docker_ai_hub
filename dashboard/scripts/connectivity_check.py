@@ -284,7 +284,7 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument("--gateway-port", type=int, default=int(os.environ.get("GATEWAY_PORT", 8080)))
     parser.add_argument("--timeout", type=int, default=int(os.environ.get("CONNECTIVITY_TIMEOUT", DEFAULT_TIMEOUT)),
                         help="Per-request timeout in seconds.")
-    parser.add_argument("--lmstudio-model", default=os.environ.get("LMSTUDIO_MODEL", "qwen3-0.6b"),
+    parser.add_argument("--lmstudio-model", default=os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b"),
                         help="Model ID to use for LM Studio chat tests.")
     parser.add_argument("--openwebui-model", default=os.environ.get("OPENWEBUI_MODEL"),
                         help="Model ID to use for Open WebUI chat tests.")

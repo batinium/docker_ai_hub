@@ -54,6 +54,12 @@
       </form>
     </section>
 
+    <section class="primary-tabs" aria-label="Dashboard Views">
+      <button class="tab-button active" type="button" data-view-button="services">Services</button>
+      <button class="tab-button" type="button" data-view-button="monitoring">Monitoring</button>
+    </section>
+
+    <div class="view-panel" data-view="services">
     <nav class="service-nav" aria-label="Services">
       {% for service in services %}
       <button class="service-chip{% if loop.first %} active{% endif %}" type="button" data-service="{{ service.id }}">
@@ -273,6 +279,96 @@
       </article>
       {% endfor %}
     </section>
+    </div>
+    <div class="view-panel" data-view="monitoring" hidden>
+      <section class="monitoring-section" id="monitoring">
+        <header class="monitoring-header">
+          <div>
+            <h2>Gateway Monitoring</h2>
+            <p class="monitoring-subtitle">Live insights generated from nginx access logs.</p>
+          </div>
+          <div class="monitoring-controls">
+            <label class="monitoring-window">
+              <span>Window</span>
+              <select data-monitoring-window>
+                <option value="15">15 min</option>
+                <option value="60" selected>60 min</option>
+                <option value="240">4 hours</option>
+              </select>
+            </label>
+            <button type="button" class="monitoring-refresh" data-monitoring-refresh>Refresh</button>
+          </div>
+        </header>
+        <div class="monitoring-status" data-monitoring-status>Loading dashboard metrics…</div>
+        <div class="monitoring-metrics" data-monitoring-metrics>
+          <article class="metric-card">
+            <h3>Total Requests</h3>
+            <p class="metric-value" data-metric-total>—</p>
+          </article>
+          <article class="metric-card">
+            <h3>Unique Clients</h3>
+            <p class="metric-value" data-metric-clients>—</p>
+          </article>
+          <article class="metric-card">
+            <h3>Unique API Keys</h3>
+            <p class="metric-value" data-metric-keys>—</p>
+          </article>
+          <article class="metric-card">
+            <h3>Flagged Requests</h3>
+            <p class="metric-value" data-metric-flagged>—</p>
+          </article>
+        </div>
+        <div class="monitoring-charts">
+          <div class="chart-card">
+            <h3>Status Codes</h3>
+            <ul class="chart-list" data-monitoring-statuses>
+              <li class="placeholder">No data yet.</li>
+            </ul>
+          </div>
+          <div class="chart-card">
+            <h3>Top API Keys</h3>
+            <ul class="chart-list" data-monitoring-api-keys>
+              <li class="placeholder">No data yet.</li>
+            </ul>
+          </div>
+          <div class="chart-card">
+            <h3>Top Clients</h3>
+            <ul class="chart-list" data-monitoring-clients>
+              <li class="placeholder">No data yet.</li>
+            </ul>
+          </div>
+          <div class="chart-card">
+            <h3>Top Endpoints</h3>
+            <ul class="chart-list" data-monitoring-endpoints>
+              <li class="placeholder">No data yet.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="monitoring-alerts" data-monitoring-alerts>
+          <p class="placeholder">No alerts detected.</p>
+        </div>
+        <div class="monitoring-table-wrapper">
+          <table class="monitoring-table">
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">Client</th>
+                <th scope="col">Scope</th>
+                <th scope="col">API Key</th>
+                <th scope="col">Endpoint</th>
+                <th scope="col">Status</th>
+                <th scope="col">Duration</th>
+              </tr>
+            </thead>
+            <tbody data-monitoring-table-body>
+              <tr>
+                <td colspan="7" class="placeholder">Awaiting log data…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </main>
 
   <footer class="footer">

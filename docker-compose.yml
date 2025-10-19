@@ -69,6 +69,9 @@ services:
     container_name: aihub_dashboard
     ports:
       - "8090:8090"
+    volumes:
+      - ./proxy/logs:/var/log/nginx:ro
+      - ./dashboard/data:/app/data
     environment:
       - AIHUB_IP=${AIHUB_IP:-${LAN_IP}}
       - LAN_IP=${LAN_IP}

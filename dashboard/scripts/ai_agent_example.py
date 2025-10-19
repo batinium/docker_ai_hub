@@ -127,7 +127,7 @@ class HubConfig:
     openwebui_port: int = int(os.environ.get("OPENWEBUI_PORT", 3000))
     kokoro_port: int = int(os.environ.get("KOKORO_PORT", 8880))
     stt_port: int = int(os.environ.get("STT_REST_PORT", 10400))
-    lmstudio_model: str = os.environ.get("LMSTUDIO_MODEL", "qwen3-0.6b")
+    lmstudio_model: str = os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b")
     lmstudio_completion_model: Optional[str] = os.environ.get("LMSTUDIO_COMPLETION_MODEL")
     lmstudio_embedding_model: Optional[str] = os.environ.get(
         "LMSTUDIO_EMBEDDING_MODEL", "text-embedding-qwen3-embedding-0.6b"
@@ -380,7 +380,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--openwebui-port", type=int, default=int(os.environ.get("OPENWEBUI_PORT", 3000)))
     parser.add_argument("--kokoro-port", type=int, default=int(os.environ.get("KOKORO_PORT", 8880)))
     parser.add_argument("--stt-port", type=int, default=int(os.environ.get("STT_REST_PORT", 10400)))
-    parser.add_argument("--lmstudio-model", default=os.environ.get("LMSTUDIO_MODEL", "qwen3-0.6b"))
+    parser.add_argument("--lmstudio-model", default=os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b"))
     parser.add_argument("--lmstudio-completion-model", default=os.environ.get("LMSTUDIO_COMPLETION_MODEL"))
     parser.add_argument(
         "--lmstudio-embedding-model",

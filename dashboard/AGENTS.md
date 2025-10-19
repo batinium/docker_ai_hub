@@ -40,7 +40,7 @@ Add new services by appending to the list; include metadata, form defaults, and 
    python scripts/connectivity_check.py --mode server
    python scripts/connectivity_check.py --mode client
    ```
-   The `server` mode hits container ports directly; `client` mode uses the nginx gateway. Defaults target `LM Studio → qwen3-0.6b` and `Ollama/Open WebUI → gemma3:4b`, but you can override with `--lmstudio-model`, `--ollama-model` (also drives Open WebUI), or the associated environment variables (`LMSTUDIO_MODEL`, `OLLAMA_MODEL`, etc.). If Open WebUI requires an API key, export `OPENWEBUI_API_KEY`; otherwise a 401 is treated as “reachable but auth required.” A non-zero exit signals at least one failing check.
+  The `server` mode hits container ports directly; `client` mode uses the nginx gateway. Defaults target `LM Studio → qwen3-06.b` and `Ollama/Open WebUI → gemma3:4b`, but you can override with `--lmstudio-model`, `--ollama-model` (also drives Open WebUI), or the associated environment variables (`LMSTUDIO_MODEL`, `OLLAMA_MODEL`, etc.). If Open WebUI requires an API key, export `OPENWEBUI_API_KEY`; otherwise a 401 is treated as “reachable but auth required.” A non-zero exit signals at least one failing check.
 4. **File persistence:** `static/tts_outputs/` is bind-mounted automatically when running locally. If you run in a container without volume mounts, you must copy the outputs out of the container or provide an external volume.
 5. **Security:** Expose the dashboard only to authenticated Tailscale peers; do not bind the container to a public interface without additional auth. When `DASHBOARD_API_KEYS` is set, every `/api/...` call must send `X-API-Key`.
 
