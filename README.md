@@ -13,6 +13,8 @@ This repository hosts the dashboard, helper scripts, and deployment tooling used
 
 Clone the repository onto the target machine, then pick the path that matches the role you want the machine to play.
 
+> Before starting the stack, copy `.env.example` to `.env` and set `LAN_IP` to the host's tunnel/LAN address. All services default to that value (and you can still override `AIHUB_IP` explicitly if needed). If you want the dashboard APIs locked down, populate `DASHBOARD_API_KEYS` (comma-separated) or `DASHBOARD_API_KEY` as well.
+
 ### Server (hosts the dashboard)
 
 ```bash
@@ -95,9 +97,14 @@ Start, stop, or refresh the stack from the repository root with Docker Compose. 
   Every probe goes through the gateway (`/lmstudio/`, `/ollama/`, `/kokoro/`, `/openwebui/`, `/stt/`). The table reports success, HTTP status, latency, and a short detail line so you can quickly spot issues after a redeploy.
 
 - **Configure Open WebUI (custom OpenAI providers)**
-  - **Text-to-Speech (Kokoro)**: set engine to `OpenAI`, base URL to `http://host.docker.internal:8080/kokoro`, model `kokoro`, voice `af_bella`, leave the API key blank or `not-needed`, and keep response splitting at `punctuation` unless you want paragraph-level chunking.
-  - **Speech-to-Text (Faster Whisper)**: set engine to `OpenAI`, base URL to `http://host.docker.internal:8080/stt`, model `small.en` (or the one you deploy), leave the API key blank; if the UI insists on a key you can use `not-needed`.
-  - Replace `host.docker.internal` with your gateway IP if WebUI runs outside Docker.
+  - **Text-to-Speech (Kokoro)**: set engine to `OpenAI`, base URL to `http://$LAN_IP:8080/kokoro/v1`, model `kokoro`, voice `af_bella`, leave the API key blank or `not-needed`, and keep response splitting at `punctuation` unless you want paragraph-level chunking.
+  - **Speech-to-Text (Faster Whisper)**: set engine to `OpenAI`, base URL to `http://$LAN_IP:8080/stt/v1`, model `small.en` (or the one you deploy), leave the API key blank; if the UI insists on a key you can use `not-needed`.
+  - When Open WebUI runs inside Docker on the same host, you can substitute `$LAN_IP` with `host.docker.internal` to avoid leaking the tailnet/Gateway IP.
+
+- **Dashboard API keys**
+  - Populate `DASHBOARD_API_KEYS` (comma-separated) or `DASHBOARD_API_KEY` in `.env` to require an `X-API-Key` header on every `/api/...` call. Leave both empty to keep the dashboard open on trusted networks.
+  - After the dashboard reloads, paste one of the keys into the "Dashboard API Key" form at the top of the page; the key stays in your browser’s local storage and is not rendered server-side.
+  - CLI helpers (`dashboard/scripts/ai_agent_example.py`, `dashboard/scripts/connectivity_check.py`) pick up `DASHBOARD_API_KEY`/`DASHBOARD_API_KEYS` automatically. Override with `--dashboard-api-key` when running manually.
 
 - **Inspect logs on a misbehaving container**
   ```bash
@@ -106,5 +113,6 @@ Start, stop, or refresh the stack from the repository root with Docker Compose. 
 
 ## Client & Agent References
 
-- `dashboard/scripts/ai_agent_example.py` demos gateway calls for LM Studio, Ollama, Kokoro, Faster Whisper, and Open WebUI. Run it with `--no-demo` to sanity-check imports, or adjust the CLI flags/environment variables to exercise specific models.
+- `dashboard/scripts/ai_agent_example.py` demos gateway calls for LM Studio, Ollama, Kokoro, Faster Whisper, and Open WebUI. Run it with `--no-demo` to sanity-check imports, or adjust the CLI flags/environment variables (including `--dashboard-api-key`) to exercise specific models.
+- `dashboard/scripts/connectivity_check.py` runs quick health probes against every gateway path. Pass `--dashboard-api-key` (or export `DASHBOARD_API_KEY`) if the dashboard requires authentication.
 - `dashboard/AGENTS.md` lists every dashboard card, the gateway path it targets, and tips for adding new services. Keep the table up to date when you introduce additional routes.

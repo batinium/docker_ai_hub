@@ -44,6 +44,16 @@
       </div>
     </section>
 
+    <section class="api-key-bar">
+      <form class="api-key-form" autocomplete="off">
+        <label for="api-key-input">Dashboard API Key</label>
+        <input id="api-key-input" class="api-key-input" type="password" placeholder="Enter key" autocomplete="off">
+        <button type="submit">Save</button>
+        <button type="button" class="api-key-clear">Clear</button>
+        <span class="api-key-status" data-api-key-status>Not set</span>
+      </form>
+    </section>
+
     <nav class="service-nav" aria-label="Services">
       {% for service in services %}
       <button class="service-chip{% if loop.first %} active{% endif %}" type="button" data-service="{{ service.id }}">
@@ -149,6 +159,7 @@
                 <div class="code-scroll">
                   <pre class="code-block">{{ service.curl_example }}</pre>
                 </div>
+                <p class="curl-note">Remember to include <code>X-API-Key: &lt;your-key&gt;</code> when calling secured endpoints.</p>
               </div>
 
               {% if service.python_example %}
@@ -160,6 +171,7 @@
                 <div class="code-scroll">
                   <pre class="code-block">{{ service.python_example }}</pre>
                 </div>
+                <p class="curl-note">Set <code>X-API-Key</code> in your request headers.</p>
               </div>
               {% endif %}
             </div>

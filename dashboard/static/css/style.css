@@ -223,6 +223,77 @@ code {
   margin-bottom: 0.75rem;
 }
 
+.api-key-bar {
+  background: var(--card-bg);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 0.8rem 1.1rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.api-key-form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.api-key-form label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.api-key-input {
+  padding: 0.45rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid #cbd5f5;
+  min-width: 200px;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.api-key-form button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.api-key-form button[type="submit"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.api-key-form button[type="submit"]:hover {
+  background: #1d4ed8;
+}
+
+.api-key-clear {
+  background: #e2e8f0;
+  color: var(--muted);
+}
+
+.api-key-clear:hover {
+  background: #cbd5f5;
+  color: var(--text);
+}
+
+.api-key-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.api-key-status.active {
+  color: #10b981;
+}
+
 .service-chip {
   display: inline-flex;
   align-items: center;
@@ -592,6 +663,12 @@ code {
   max-width: 100%;
 }
 
+.curl-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .curl-header {
   display: flex;
   justify-content: space-between;
@@ -757,6 +834,16 @@ code {
 
   .env-item {
     text-align: left;
+  }
+
+  .api-key-form {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .api-key-form button {
+    width: 100%;
   }
 
   .service-header {

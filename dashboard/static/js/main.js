@@ -5,7 +5,64 @@ const serviceChips = Array.from(document.querySelectorAll(".service-chip"));
 const statusDots = Array.from(document.querySelectorAll("[data-service-status]"));
 const topBar = document.querySelector(".top-bar");
 const serviceNav = document.querySelector(".service-nav");
+const apiKeyForm = document.querySelector(".api-key-form");
+const apiKeyInput = document.querySelector(".api-key-input");
+const apiKeyStatus = document.querySelector("[data-api-key-status]");
+const apiKeyClear = document.querySelector(".api-key-clear");
+const LOCAL_STORAGE_KEY = "dashboardApiKey";
+let apiKey = localStorage.getItem(LOCAL_STORAGE_KEY) || "";
 let initialActiveService = null;
+
+function setApiKey(newKey) {
+  apiKey = newKey.trim();
+  if (apiKey) {
+    localStorage.setItem(LOCAL_STORAGE_KEY, apiKey);
+  } else {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+  }
+  updateApiKeyStatus();
+  fetchStatuses();
+}
+
+function updateApiKeyStatus() {
+  if (!apiKeyStatus) {
+    return;
+  }
+  if (apiKey) {
+    apiKeyStatus.textContent = "Key saved";
+    apiKeyStatus.classList.add("active");
+  } else {
+    apiKeyStatus.textContent = "Not set";
+    apiKeyStatus.classList.remove("active");
+  }
+}
+
+if (apiKeyForm && apiKeyInput) {
+  apiKeyForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    setApiKey(apiKeyInput.value);
+    apiKeyInput.value = "";
+  });
+}
+
+if (apiKeyClear) {
+  apiKeyClear.addEventListener("click", () => {
+    setApiKey("");
+  });
+}
+
+setApiKey(apiKey);
+
+function authFetch(url, options = {}) {
+  const opts = { ...options };
+  if (apiKey) {
+    const headers =
+      opts.headers instanceof Headers ? opts.headers : new Headers(opts.headers || {});
+    headers.set("X-API-Key", apiKey);
+    opts.headers = headers;
+  }
+  return fetch(url, opts);
+}
 
 function getServiceIdFromToggle(button) {
   return button.dataset.service;
@@ -145,8 +202,15 @@ async function fetchStatuses() {
   if (statusDots.length === 0) {
     return;
   }
+  if (!apiKey) {
+    statusDots.forEach((dot) => {
+      dot.dataset.state = "unknown";
+      dot.setAttribute("title", "Set the dashboard API key to fetch status.");
+    });
+    return;
+  }
   try {
-    const response = await fetch("/api/service-status");
+    const response = await authFetch("/api/service-status");
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -169,7 +233,6 @@ async function fetchStatuses() {
   }
 }
 
-fetchStatuses();
 setInterval(fetchStatuses, 60000);
 
 async function loadServiceInfo(serviceId, section, force = false) {
@@ -184,10 +247,15 @@ async function loadServiceInfo(serviceId, section, force = false) {
   if (!force && (state === "loaded" || state === "loading")) {
     return;
   }
+  if (!apiKey) {
+    section.dataset.state = "error";
+    renderPlaceholder(body, "Set the dashboard API key (top bar) to load data.");
+    return;
+  }
   section.dataset.state = "loading";
   renderPlaceholder(body, "Loading...");
   try {
-    const response = await fetch(`/api/service-info/${serviceId}`);
+    const response = await authFetch(`/api/service-info/${serviceId}`);
     if (!response.ok) {
       const detail = await response.text();
       throw new Error(detail || `HTTP ${response.status}`);
@@ -430,12 +498,17 @@ async function handleSubmit(event) {
     return;
   }
 
+  if (!apiKey) {
+    renderPlaceholder(container, "Set the dashboard API key (top bar) before sending requests.");
+    return;
+  }
+
   renderPlaceholder(container, "Request in flight...");
 
   let response;
   try {
     const formData = new FormData(form);
-    response = await fetch(endpoint, {
+    response = await authFetch(endpoint, {
       method,
       body: formData,
     });

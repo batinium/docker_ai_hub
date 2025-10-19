@@ -1,6 +1,6 @@
 # ~/aihub/dashboard/app.py
 
-from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
+from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
@@ -13,7 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
-AIHUB_IP = os.environ.get("AIHUB_IP", "100.64.194.12")
+DEFAULT_IP = os.environ.get("LAN_IP", "127.0.0.1")
+AIHUB_IP = os.environ.get("AIHUB_IP", DEFAULT_IP)
 LMSTUDIO_PORT = int(os.environ.get("LMSTUDIO_PORT", 1234))
 KOKORO_PORT   = int(os.environ.get("KOKORO_PORT", 8880))
 STT_REST_PORT = int(os.environ.get("STT_REST_PORT", 10400))
@@ -22,6 +23,11 @@ GATEWAY_PORT = int(os.environ.get("GATEWAY_PORT", 8080))
 STATIC_VERSION = os.environ.get("STATIC_VERSION") or str(int(time.time()))
 GATEWAY_BASE = f"http://{AIHUB_IP}:{GATEWAY_PORT}"
 OPENWEBUI_API_KEY = os.environ.get("OPENWEBUI_API_KEY")
+DASHBOARD_API_KEYS = [
+    key.strip()
+    for key in os.environ.get("DASHBOARD_API_KEYS", "").split(",")
+    if key.strip()
+]
 
 PORTS = {
     "lmstudio": LMSTUDIO_PORT,
@@ -546,6 +552,17 @@ SERVICE_INFO_HANDLERS: dict[str, Callable[[], dict]] = {
     "faster-whisper-stt": info_faster_whisper_models,
 }
 
+
+async def require_api_key(request: Request) -> None:
+    if not DASHBOARD_API_KEYS:
+        return
+    header_key = request.headers.get("x-api-key")
+    query_key = request.query_params.get("api_key")
+    provided = header_key or query_key
+    if provided and provided in DASHBOARD_API_KEYS:
+        return
+    raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
 # -- APPLICATION SETUP
 app = FastAPI(title="AI Hub Dashboard")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -566,7 +583,7 @@ async def home(request: Request):
 
 
 @app.get("/api/services", response_class=JSONResponse)
-async def list_services():
+async def list_services(_: None = Depends(require_api_key)):
     """Expose service metadata for frontend or external tools."""
     return {
         "ip": AIHUB_IP,
@@ -576,7 +593,7 @@ async def list_services():
 
 
 @app.get("/api/service-status", response_class=JSONResponse)
-async def service_status():
+async def service_status(_: None = Depends(require_api_key)):
     """Return reachability status for each configured service."""
     results = {}
     for service in SERVICES:
@@ -590,7 +607,7 @@ async def service_status():
 
 
 @app.get("/api/service-info/{service_id}", response_class=JSONResponse)
-async def service_info(service_id: str):
+async def service_info(service_id: str, _: None = Depends(require_api_key)):
     """Return gateway-backed live data for a given service."""
     handler = SERVICE_INFO_HANDLERS.get(service_id)
     if not handler:
@@ -608,7 +625,7 @@ async def service_info(service_id: str):
 
 # -- API ROUTES for agent/service calls
 @app.post("/api/chat")
-async def chat(model: str = Form(...), message: str = Form(...)):
+async def chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
     """Send a chat request to LM Studio."""
     url = f"{GATEWAY_BASE}/lmstudio/v1/chat/completions"
     payload = {
@@ -625,7 +642,7 @@ async def chat(model: str = Form(...), message: str = Form(...)):
 
 
 @app.post("/api/lmstudio/models")
-async def list_models():
+async def list_models(_: None = Depends(require_api_key)):
     """List models currently hosted on LM Studio."""
     url = f"{GATEWAY_BASE}/lmstudio/v1/models"
     try:
@@ -636,7 +653,7 @@ async def list_models():
     return JSONResponse(content={"status": r.status_code, "response": r.json()})
 
 @app.post("/api/lmstudio/responses")
-async def lmstudio_responses(model: str = Form(...), prompt: str = Form(...)):
+async def lmstudio_responses(model: str = Form(...), prompt: str = Form(...), _: None = Depends(require_api_key)):
     """Proxy the LM Studio Responses endpoint."""
     url = f"{GATEWAY_BASE}/lmstudio/v1/responses"
     payload = {
@@ -651,7 +668,7 @@ async def lmstudio_responses(model: str = Form(...), prompt: str = Form(...)):
     return JSONResponse(content={"status": r.status_code, "response": r.json()})
 
 @app.post("/api/lmstudio/completions")
-async def lmstudio_completions(model: str = Form(...), prompt: str = Form(...), max_tokens: str = Form("")):
+async def lmstudio_completions(model: str = Form(...), prompt: str = Form(...), max_tokens: str = Form(""), _: None = Depends(require_api_key)):
     """Proxy the OpenAI-compatible Completions endpoint."""
     url = f"{GATEWAY_BASE}/lmstudio/v1/completions"
     payload = {
@@ -675,7 +692,7 @@ async def lmstudio_completions(model: str = Form(...), prompt: str = Form(...), 
     return JSONResponse(content={"status": r.status_code, "response": r.json()})
 
 @app.post("/api/lmstudio/embeddings")
-async def lmstudio_embeddings(model: str = Form(...), text: str = Form(...)):
+async def lmstudio_embeddings(model: str = Form(...), text: str = Form(...), _: None = Depends(require_api_key)):
     """Proxy the embeddings endpoint to generate vectors."""
     url = f"{GATEWAY_BASE}/lmstudio/v1/embeddings"
     payload = {
@@ -690,7 +707,7 @@ async def lmstudio_embeddings(model: str = Form(...), text: str = Form(...)):
     return JSONResponse(content={"status": r.status_code, "response": r.json()})
 
 @app.post("/api/tts")
-async def tts(text: str = Form(...), voice: str = Form("af_bella")):
+async def tts(text: str = Form(...), voice: str = Form("af_bella"), _: None = Depends(require_api_key)):
     """Generate TTS via Kokoro, save locally and return playback path."""
     url = f"{GATEWAY_BASE}/kokoro/v1/audio/speech"
     payload = {
@@ -724,7 +741,7 @@ async def tts(text: str = Form(...), voice: str = Form("af_bella")):
     )
 
 @app.post("/api/stt")
-async def stt(file: UploadFile = File(...)):
+async def stt(file: UploadFile = File(...), _: None = Depends(require_api_key)):
     """Upload a WAV/MP3 file and transcribe via Faster-Whisper REST."""
     url = f"{GATEWAY_BASE}/stt/v1/audio/transcriptions"
     try:
@@ -738,7 +755,7 @@ async def stt(file: UploadFile = File(...)):
 
 
 @app.post("/api/openwebui/chat")
-async def openwebui_chat(model: str = Form(...), message: str = Form(...)):
+async def openwebui_chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
     """Send a chat completion request through Open WebUI."""
     url = f"{GATEWAY_BASE}/openwebui/api/chat/completions"
     payload = {
@@ -758,7 +775,7 @@ async def openwebui_chat(model: str = Form(...), message: str = Form(...)):
 
 
 @app.post("/api/gateway/chat")
-async def gateway_chat(model: str = Form(...), message: str = Form(...)):
+async def gateway_chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
     """Relay chat completions through the nginx gateway."""
     url = f"{GATEWAY_BASE}/lmstudio/v1/chat/completions"
     payload = {
@@ -775,7 +792,7 @@ async def gateway_chat(model: str = Form(...), message: str = Form(...)):
 
 
 @app.post("/api/gateway/ollama/chat")
-async def gateway_ollama_chat(model: str = Form(...), message: str = Form(...)):
+async def gateway_ollama_chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
     """Relay chat completions to Ollama through the nginx gateway."""
     url = f"{GATEWAY_BASE}/ollama/v1/chat/completions"
     payload = {

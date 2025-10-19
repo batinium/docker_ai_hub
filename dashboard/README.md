@@ -26,7 +26,7 @@ python scripts/connectivity_check.py --mode server
 python scripts/ai_agent_example.py --no-demo
 
 # Execute the full sample workflow with explicit host/model overrides
-python scripts/ai_agent_example.py --host 100.64.x.x --lmstudio-model qwen3-0.6b --ollama-model gemma3:4b
+python scripts/ai_agent_example.py --host \$LAN_IP --lmstudio-model qwen3-0.6b --ollama-model gemma3:4b
 ```
 
 Security & Sharing

@@ -69,17 +69,10 @@ services:
     container_name: aihub_dashboard
     ports:
       - "8090:8090"
+    environment:
+      - AIHUB_IP=${AIHUB_IP:-${LAN_IP}}
+      - LAN_IP=${LAN_IP}
     restart: unless-stopped
     depends_on:
       - kokoro
       - faster_whisper_rest
-
-  # Optional Ollama or LM Studio connector
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: ollama
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ./ollama-data:/root/.ollama
-  #   restart: unless-stopped

@@ -13,7 +13,9 @@ The script shows how to:
 Usage:
   python ai_agent_example.py --help
 
-Designed as reference code that LLM-based agents can study or reuse.
+Designed as reference code that LLM-based agents can study or reuse. When the
+dashboard requires API keys, set `DASHBOARD_API_KEY`/`DASHBOARD_API_KEYS` or
+pass `--dashboard-api-key` so the helper can authenticate with `X-API-Key`.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ import requests
 
 
 def _default_host() -> str:
-    return os.environ.get("AIHUB_IP", "127.0.0.1")
+    return os.environ.get("AIHUB_IP", os.environ.get("LAN_IP", "127.0.0.1"))
 
 
 def _build_url(host: str, port: int, path: str) -> str:
@@ -42,10 +44,24 @@ def _build_url(host: str, port: int, path: str) -> str:
     return f"http://{host}:{port}/{path}"
 
 
-def _headers(api_key: Optional[str] = None) -> Dict[str, str]:
-    headers = {"Content-Type": "application/json"}
+def _env_dashboard_api_key() -> Optional[str]:
+    primary = os.environ.get("DASHBOARD_API_KEY")
+    if primary and primary.strip():
+        return primary.strip()
+    keys = [key.strip() for key in os.environ.get("DASHBOARD_API_KEYS", "").split(",") if key.strip()]
+    return keys[0] if keys else None
+
+
+def _auth_headers(api_key: Optional[str] = None) -> Dict[str, str]:
+    headers: Dict[str, str] = {}
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        headers["X-API-Key"] = api_key
+    return headers
+
+
+def _json_headers(api_key: Optional[str] = None) -> Dict[str, str]:
+    headers = _auth_headers(api_key)
+    headers["Content-Type"] = "application/json"
     return headers
 
 
@@ -88,6 +104,7 @@ class HubConfig:
     ollama_model: str = os.environ.get("OLLAMA_MODEL", "gemma3:4b")
     kokoro_voice: str = os.environ.get("KOKORO_VOICE", "af_bella")
     openwebui_api_key: Optional[str] = os.environ.get("OPENWEBUI_API_KEY")
+    dashboard_api_key: Optional[str] = _env_dashboard_api_key()
     timeout: int = int(os.environ.get("AGENT_TIMEOUT", 30))
 
 
@@ -102,14 +119,14 @@ class AIHubClient:
     def models_lmstudio(self) -> Dict:
         """List models exposed by the LM Studio OpenAI-compatible server."""
         url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/models")
-        resp = self.session.get(url, headers=_headers(), timeout=self.config.timeout)
+        resp = self.session.get(url, headers=_auth_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def chat_lmstudio(self, messages: Iterable[Dict[str, str]]) -> Dict:
         url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/chat/completions")
         payload = {"model": self.config.lmstudio_model, "messages": list(messages), "stream": False}
-        resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
+        resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -117,7 +134,7 @@ class AIHubClient:
         """Call the LM Studio Responses endpoint."""
         url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/responses")
         payload = {"model": self.config.lmstudio_model, "input": prompt}
-        resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
+        resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -126,7 +143,7 @@ class AIHubClient:
         model = self.config.lmstudio_completion_model or self.config.lmstudio_model
         url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/completions")
         payload = {"model": model, "prompt": prompt, "max_tokens": 120}
-        resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
+        resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -135,19 +152,17 @@ class AIHubClient:
         model = self.config.lmstudio_embedding_model or self.config.lmstudio_model
         url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/embeddings")
         payload = {"model": model, "input": text}
-        resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
+        resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
     def chat_openwebui(self, messages: Iterable[Dict[str, str]]) -> Dict:
         url = _build_url(self.config.host, self.config.gateway_port, "/openwebui/api/chat/completions")
         payload = {"model": self.config.ollama_model, "messages": list(messages)}
-        resp = self.session.post(
-            url,
-            json=payload,
-            headers=_headers(self.config.openwebui_api_key),
-            timeout=self.config.timeout,
-        )
+        headers = _json_headers(self.config.dashboard_api_key)
+        if self.config.openwebui_api_key:
+            headers["Authorization"] = f"Bearer {self.config.openwebui_api_key}"
+        resp = self.session.post(url, json=payload, headers=headers, timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -155,7 +170,7 @@ class AIHubClient:
         """Call LM Studio through the nginx gateway."""
         url = _build_url(self.config.host, self.config.gateway_port, "/lmstudio/v1/chat/completions")
         payload = {"model": self.config.lmstudio_model, "messages": list(messages), "stream": False}
-        resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
+        resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -163,7 +178,7 @@ class AIHubClient:
         """Call Ollama through the nginx gateway."""
         url = _build_url(self.config.host, self.config.gateway_port, "/ollama/v1/chat/completions")
         payload = {"model": self.config.ollama_model, "messages": list(messages), "stream": False}
-        resp = self.session.post(url, json=payload, headers=_headers(), timeout=self.config.timeout)
+        resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -178,7 +193,7 @@ class AIHubClient:
             "response_format": "mp3",
             "speed": speed,
         }
-        resp = self.session.post(url, json=payload, timeout=self.config.timeout)
+        resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.content
 
@@ -195,7 +210,7 @@ class AIHubClient:
         data = {"language": language}
         if model_override:
             data["model_size"] = model_override
-        resp = self.session.post(url, files=files, data=data, timeout=self.config.timeout)
+        resp = self.session.post(url, files=files, data=data, headers=_auth_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -214,7 +229,7 @@ class AIHubClient:
             data["model_size"] = model_override
         with path.open("rb") as fh:
             files = {"file": (path.name, fh, mime_type)}
-            resp = self.session.post(url, files=files, data=data, timeout=self.config.timeout)
+            resp = self.session.post(url, files=files, data=data, headers=_auth_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -343,6 +358,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--ollama-model", default=os.environ.get("OLLAMA_MODEL", "gemma3:4b"))
     parser.add_argument("--kokoro-voice", default=os.environ.get("KOKORO_VOICE", "af_bella"))
     parser.add_argument("--openwebui-api-key", default=os.environ.get("OPENWEBUI_API_KEY"))
+    parser.add_argument(
+        "--dashboard-api-key",
+        default=os.environ.get("DASHBOARD_API_KEY"),
+        help="API key for dashboard-secured endpoints (overrides DASHBOARD_API_KEY/DASHBOARD_API_KEYS).",
+    )
     parser.add_argument("--timeout", type=int, default=int(os.environ.get("AGENT_TIMEOUT", 30)))
     parser.add_argument("--no-demo", action="store_true", help="Importable mode; do not run the live demo.")
     return parser.parse_args(argv)
@@ -363,6 +383,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         ollama_model=args.ollama_model,
         kokoro_voice=args.kokoro_voice,
         openwebui_api_key=args.openwebui_api_key,
+        dashboard_api_key=args.dashboard_api_key or _env_dashboard_api_key(),
         timeout=args.timeout,
     )
 

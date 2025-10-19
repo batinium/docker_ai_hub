@@ -32,3 +32,6 @@ dashboard/__pycache__/
 faster-whisper-data/
 openwebui-data/
 proxy/logs/
+
+# Environment configuration
+.env

@@ -5,7 +5,9 @@ Connectivity checks for AI Hub services using OpenAI-compatible endpoints.
 Run this script on the server or a remote client to verify that the nginx
 gateway is proxying each AI Hub service correctly. All probes target the
 gateway routes (e.g. `/lmstudio/`, `/ollama/`, `/kokoro/`, `/stt/`). Set
-connection details via environment variables or CLI flags as needed.
+connection details via environment variables or CLI flags as needed. When
+`DASHBOARD_API_KEY`/`DASHBOARD_API_KEYS` is set, include an `X-API-Key` header
+or pass `--dashboard-api-key`.
 """
 
 from __future__ import annotations
@@ -20,6 +22,25 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Optional
 
 import requests
+
+
+def _resolve_dashboard_key(explicit: Optional[str] = None) -> Optional[str]:
+    if explicit and explicit.strip():
+        return explicit.strip()
+    primary = os.environ.get("DASHBOARD_API_KEY")
+    if primary and primary.strip():
+        return primary.strip()
+    keys = [key.strip() for key in os.environ.get("DASHBOARD_API_KEYS", "").split(",") if key.strip()]
+    return keys[0] if keys else None
+
+
+def _headers(api_key: Optional[str], extra: Optional[dict] = None) -> dict:
+    headers: dict = {}
+    if api_key:
+        headers["X-API-Key"] = api_key
+    if extra:
+        headers.update(extra)
+    return headers
 
 
 DEFAULT_TIMEOUT = 15
@@ -37,6 +58,7 @@ class TestContext:
     ollama_model: Optional[str]
     kokoro_voice: str
     openwebui_api_key: Optional[str]
+    dashboard_api_key: Optional[str]
 
 
 @dataclass
@@ -81,7 +103,7 @@ def lmstudio_chat(session: requests.Session, ctx: TestContext) -> TestResult:
     payload = _json_chat_payload(ctx.lmstudio_model)
     start = time.perf_counter()
     try:
-        resp = session.post(url, json=payload, timeout=ctx.timeout)
+        resp = session.post(url, json=payload, headers=_headers(ctx.dashboard_api_key), timeout=ctx.timeout)
         elapsed = time.perf_counter() - start
         resp.raise_for_status()
         data = resp.json()
@@ -98,7 +120,7 @@ def lmstudio_models(session: requests.Session, ctx: TestContext) -> TestResult:
     url = f"http://{ctx.ip}:{ctx.gateway_port}/lmstudio/v1/models"
     start = time.perf_counter()
     try:
-        resp = session.get(url, timeout=ctx.timeout)
+        resp = session.get(url, headers=_headers(ctx.dashboard_api_key), timeout=ctx.timeout)
         elapsed = time.perf_counter() - start
         resp.raise_for_status()
         data = resp.json()
@@ -123,7 +145,7 @@ def kokoro_tts(session: requests.Session, ctx: TestContext) -> TestResult:
     }
     start = time.perf_counter()
     try:
-        resp = session.post(url, json=payload, timeout=ctx.timeout)
+        resp = session.post(url, json=payload, headers=_headers(ctx.dashboard_api_key), timeout=ctx.timeout)
         elapsed = time.perf_counter() - start
         resp.raise_for_status()
         content_type = resp.headers.get("Content-Type", "")
@@ -144,7 +166,7 @@ def faster_whisper_stt(session: requests.Session, ctx: TestContext) -> TestResul
     }
     start = time.perf_counter()
     try:
-        resp = session.post(url, files=files, timeout=ctx.timeout)
+        resp = session.post(url, files=files, headers=_headers(ctx.dashboard_api_key), timeout=ctx.timeout)
         elapsed = time.perf_counter() - start
         resp.raise_for_status()
         data = resp.json()
@@ -162,12 +184,12 @@ def openwebui_chat(session: requests.Session, ctx: TestContext) -> TestResult:
         return TestResult("Gateway → Open WebUI chat", True, None, "Skipped (no Open WebUI model provided)", 0.0)
     url = f"http://{ctx.ip}:{ctx.gateway_port}/openwebui/api/chat/completions"
     payload = _json_chat_payload(ctx.openwebui_model, "Ping from connectivity check.")
-    headers = {}
+    extra_headers = {}
     if ctx.openwebui_api_key:
-        headers["Authorization"] = f"Bearer {ctx.openwebui_api_key}"
+        extra_headers["Authorization"] = f"Bearer {ctx.openwebui_api_key}"
     start = time.perf_counter()
     try:
-        resp = session.post(url, json=payload, headers=headers, timeout=ctx.timeout)
+        resp = session.post(url, json=payload, headers=_headers(ctx.dashboard_api_key, extra_headers), timeout=ctx.timeout)
         elapsed = time.perf_counter() - start
         resp.raise_for_status()
         data = resp.json()
@@ -195,7 +217,7 @@ def gateway_ollama_chat(session: requests.Session, ctx: TestContext) -> TestResu
     payload = _json_chat_payload(ctx.ollama_model, "Gateway Ollama connectivity probe.")
     start = time.perf_counter()
     try:
-        resp = session.post(url, json=payload, timeout=ctx.timeout)
+        resp = session.post(url, json=payload, headers=_headers(ctx.dashboard_api_key), timeout=ctx.timeout)
         elapsed = time.perf_counter() - start
         resp.raise_for_status()
         data = resp.json()
@@ -225,7 +247,7 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["server", "client", "all"], default="all",
                         help="Choose which set of endpoints to verify.")
-    parser.add_argument("--ip", default=os.environ.get("AIHUB_IP", "127.0.0.1"),
+    parser.add_argument("--ip", default=os.environ.get("AIHUB_IP", os.environ.get("LAN_IP", "127.0.0.1")),
                         help="AI Hub host/IP to target.")
     parser.add_argument("--gateway-port", type=int, default=int(os.environ.get("GATEWAY_PORT", 8080)))
     parser.add_argument("--timeout", type=int, default=int(os.environ.get("CONNECTIVITY_TIMEOUT", DEFAULT_TIMEOUT)),
@@ -240,6 +262,8 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
                         help="Voice preset to use for Kokoro speech tests.")
     parser.add_argument("--openwebui-api-key", default=os.environ.get("OPENWEBUI_API_KEY"),
                         help="API key for Open WebUI (if authentication is enabled).")
+    parser.add_argument("--dashboard-api-key", default=os.environ.get("DASHBOARD_API_KEY"),
+                        help="API key for the dashboard gateway (overrides DASHBOARD_API_KEY/DASHBOARD_API_KEYS).")
     return parser.parse_args(argv)
 
 
@@ -253,6 +277,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv or sys.argv[1:])
     if not args.openwebui_model:
         args.openwebui_model = args.ollama_model
+    dashboard_api_key = _resolve_dashboard_key(args.dashboard_api_key)
     ctx = TestContext(
         ip=args.ip,
         gateway_port=args.gateway_port,
@@ -262,9 +287,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         ollama_model=args.ollama_model,
         kokoro_voice=args.kokoro_voice,
         openwebui_api_key=args.openwebui_api_key,
+        dashboard_api_key=dashboard_api_key,
     )
 
     session = requests.Session()
+    if ctx.dashboard_api_key:
+        session.headers.update(_headers(ctx.dashboard_api_key))
     tests = _select_tests(args.mode)
     results: List[TestResult] = []
     for test in tests:
