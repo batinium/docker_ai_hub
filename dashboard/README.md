@@ -18,6 +18,7 @@ The homepage includes a *Gateway Monitoring* card that parses the nginx JSON acc
 - `NGINX_ACCESS_LOG` – Absolute path to the log file if you store it elsewhere.
 - `MONITORING_ALERT_WINDOW_MIN` – Rolling window (minutes) used to detect bursts and repeated client errors.
 - `MONITORING_RATE_THRESHOLD`, `MONITORING_CLIENT_ERROR_THRESHOLD`, `MONITORING_MISSING_KEY_THRESHOLD` – Tune the heuristics that raise warnings in the UI.
+- `MONITORING_IGNORE_CLIENTS` – Comma or whitespace separated list of client IPs that should be excluded from metrics (handy for suppressing internal health checks such as 172.18.0.1 or 192.168.65.1).
 - `MONITORING_DB_PATH`, `MONITORING_STATE_PATH`, `MONITORING_MAX_AGE_DAYS` – Control where events are stored and how long they’re retained.
 
 Paste your dashboard API key into the top bar field to unlock the metrics, live activity table, and alert stream. Data refreshes automatically every minute or whenever you hit the **Refresh** button. If nginx is still emitting the legacy combined format, the ingestion step will parse it (without API-key visibility) and persist the events all the same.

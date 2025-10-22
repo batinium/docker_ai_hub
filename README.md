@@ -211,3 +211,7 @@ Any value present in `.env` is now automatically injected into the helper script
 ## License
 
 This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
+
+## Roadmap
+-  Add api_verification to monitoring so only admin can see.
+-  IP filtering to montoring.

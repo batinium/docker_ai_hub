@@ -294,6 +294,14 @@ code {
   color: #10b981;
 }
 
+.api-key-status.pending {
+  color: #f59e0b;
+}
+
+.api-key-status.error {
+  color: #ef4444;
+}
+
 .primary-tabs {
   display: inline-flex;
   gap: 0.75rem;
@@ -358,6 +366,25 @@ code {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.monitoring-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.monitoring-filter input {
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5f5;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: #f8fafc;
+  min-width: 14ch;
 }
 
 .monitoring-window {
@@ -600,6 +627,14 @@ code {
 .monitoring-table td .flag.success {
   background: rgba(16, 185, 129, 0.12);
   color: #0f766e;
+}
+
+.monitoring-table td .user-agent {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  word-break: break-word;
+  max-width: 36ch;
 }
 
 .service-chip {

@@ -75,6 +75,7 @@ services:
     environment:
       - AIHUB_IP=${AIHUB_IP:-${LAN_IP}}
       - LAN_IP=${LAN_IP}
+      - DASHBOARD_API_KEYS=${DASHBOARD_API_KEYS}
     restart: unless-stopped
     depends_on:
       - kokoro

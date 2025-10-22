@@ -13,6 +13,7 @@ const viewButtons = Array.from(document.querySelectorAll("[data-view-button]"));
 const viewPanels = Array.from(document.querySelectorAll(".view-panel"));
 const LOCAL_STORAGE_KEY = "dashboardApiKey";
 let apiKey = localStorage.getItem(LOCAL_STORAGE_KEY) || "";
+let apiKeyValid = false;
 let initialActiveService = null;
 
 let activeView = (viewButtons.find((btn) => btn.classList.contains("active"))?.dataset.viewButton) || "services";
@@ -25,15 +26,18 @@ const monitoringMetrics = {
   clients: document.querySelector("[data-metric-clients]"),
   keys: document.querySelector("[data-metric-keys]"),
   flagged: document.querySelector("[data-metric-flagged]"),
+  userAgents: document.querySelector("[data-metric-user-agents]"),
 };
 const monitoringLists = {
   statuses: document.querySelector("[data-monitoring-statuses]"),
   apiKeys: document.querySelector("[data-monitoring-api-keys]"),
   clients: document.querySelector("[data-monitoring-clients]"),
   endpoints: document.querySelector("[data-monitoring-endpoints]"),
+  userAgents: document.querySelector("[data-monitoring-user-agents]"),
 };
 const monitoringAlertsContainer = document.querySelector("[data-monitoring-alerts]");
 const monitoringTableBody = document.querySelector("[data-monitoring-table-body]");
+const monitoringFilterInput = document.querySelector("[data-monitoring-filter]");
 
 const monitoringActive = Boolean(monitoringStatus);
 const MONITORING_SUMMARY_LIMIT = 2000;
@@ -50,49 +54,109 @@ const numberFormatter = new Intl.NumberFormat();
 let monitoringWindow = monitoringWindowSelect ? Number(monitoringWindowSelect.value) || 60 : 60;
 let monitoringLoading = false;
 let monitoringViewActive = activeView === "monitoring";
+let monitoringEvents = [];
+let monitoringFilterText = "";
+const DEFAULT_MONITORING_EMPTY_MESSAGE = "No gateway traffic observed in the selected window.";
+let monitoringEmptyMessage = DEFAULT_MONITORING_EMPTY_MESSAGE;
 
-function setApiKey(newKey) {
-  apiKey = newKey.trim();
-  if (apiKey) {
-    localStorage.setItem(LOCAL_STORAGE_KEY, apiKey);
-  } else {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
+function setApiKeyStatus(text, state) {
+  if (!apiKeyStatus) {
+    return;
   }
-  updateApiKeyStatus();
+  apiKeyStatus.textContent = text;
+  apiKeyStatus.classList.remove("active", "error", "pending");
+  if (state) {
+    apiKeyStatus.classList.add(state);
+  }
+}
+
+async function verifyApiKey(candidate) {
+  if (!candidate) {
+    return false;
+  }
+  try {
+    const response = await fetch("/api/auth/verify", {
+      headers: {
+        "X-API-Key": candidate,
+      },
+      cache: "no-store",
+    });
+    return response.ok;
+  } catch (error) {
+    console.warn("API key verification failed:", error);
+    return false;
+  }
+}
+
+async function setApiKey(newKey, options = {}) {
+  const { skipValidation = false, silent = false } = options;
+  const candidate = (newKey || "").trim();
+
+  if (!candidate) {
+    apiKey = "";
+    apiKeyValid = false;
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    if (!silent) {
+      setApiKeyStatus("Not set", null);
+    }
+    fetchStatuses();
+    if (monitoringActive && monitoringViewActive) {
+      loadMonitoringData();
+    }
+    return true;
+  }
+
+  if (!skipValidation) {
+    setApiKeyStatus("Validating…", "pending");
+    const valid = await verifyApiKey(candidate);
+    if (!valid) {
+      apiKeyValid = false;
+      if (!silent) {
+        setApiKeyStatus("Invalid key", "error");
+      } else {
+        setApiKeyStatus("Not set", null);
+      }
+      return false;
+    }
+  }
+
+  apiKey = candidate;
+  apiKeyValid = true;
+  localStorage.setItem(LOCAL_STORAGE_KEY, apiKey);
+  setApiKeyStatus("Key saved", "active");
   fetchStatuses();
   if (monitoringActive && monitoringViewActive) {
     loadMonitoringData();
   }
-}
-
-function updateApiKeyStatus() {
-  if (!apiKeyStatus) {
-    return;
-  }
-  if (apiKey) {
-    apiKeyStatus.textContent = "Key saved";
-    apiKeyStatus.classList.add("active");
-  } else {
-    apiKeyStatus.textContent = "Not set";
-    apiKeyStatus.classList.remove("active");
-  }
+  return true;
 }
 
 if (apiKeyForm && apiKeyInput) {
-  apiKeyForm.addEventListener("submit", (event) => {
+  apiKeyForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    setApiKey(apiKeyInput.value);
-    apiKeyInput.value = "";
+    const value = apiKeyInput.value;
+    const ok = await setApiKey(value);
+    if (ok) {
+      apiKeyInput.value = "";
+    }
   });
 }
 
 if (apiKeyClear) {
-  apiKeyClear.addEventListener("click", () => {
-    setApiKey("");
+  apiKeyClear.addEventListener("click", async () => {
+    await setApiKey("", { skipValidation: true });
   });
 }
 
-setApiKey(apiKey);
+if (apiKey) {
+  setApiKey(apiKey, { silent: true }).then((ok) => {
+    if (!ok) {
+      setApiKeyStatus("Invalid key", "error");
+    }
+  });
+} else {
+  setApiKeyStatus("Not set", null);
+}
 
 function authFetch(url, options = {}) {
   const opts = { ...options };
@@ -169,6 +233,39 @@ function formatRelativeTime(iso) {
   }
   const days = Math.floor(hours / 24);
   return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+function normalizeFilterValue(value) {
+  return (value || "").trim().toLowerCase();
+}
+
+function applyMonitoringFilter(events) {
+  if (!monitoringFilterText) {
+    return events;
+  }
+  const search = monitoringFilterText;
+  return events.filter((event) => {
+    const client = (event.client_ip || "").toLowerCase();
+    if (client.includes(search)) {
+      return true;
+    }
+    const scope = (event.network_scope || "").toLowerCase();
+    return scope.includes(search);
+  });
+}
+
+function setMonitoringFilter(value) {
+  const normalized = normalizeFilterValue(value);
+  if (normalized === monitoringFilterText) {
+    return;
+  }
+  monitoringFilterText = normalized;
+  if (monitoringFilterInput && monitoringFilterInput.value !== value) {
+    monitoringFilterInput.value = value;
+  }
+  if (monitoringActive) {
+    renderMonitoringEvents();
+  }
 }
 
 function setActiveView(view) {
@@ -289,6 +386,26 @@ function renderTopEndpoints(endpoints) {
   );
 }
 
+function renderTopUserAgents(userAgents) {
+  ensureListContent(
+    monitoringLists.userAgents,
+    userAgents,
+    (entry) => {
+      const li = document.createElement("li");
+      const label = document.createElement("strong");
+      const agent = entry.user_agent || "(unknown)";
+      const maxLen = 80;
+      label.textContent = agent.length > maxLen ? `${agent.slice(0, maxLen - 1)}…` : agent;
+      label.setAttribute("title", agent);
+      const value = document.createElement("span");
+      value.textContent = formatNumber(entry.count);
+      li.append(label, value);
+      return li;
+    },
+    "No user agent data."
+  );
+}
+
 function renderMonitoringAlerts(alerts) {
   if (!monitoringAlertsContainer) {
     return;
@@ -331,6 +448,8 @@ function renderMonitoringAlerts(alerts) {
 }
 
 function resetMonitoringMetrics() {
+  monitoringEvents = [];
+  monitoringEmptyMessage = DEFAULT_MONITORING_EMPTY_MESSAGE;
   Object.values(monitoringMetrics).forEach((el) => {
     if (el) {
       el.textContent = "—";
@@ -340,6 +459,7 @@ function resetMonitoringMetrics() {
   renderTopApiKeys([]);
   renderTopClients([]);
   renderTopEndpoints([]);
+  renderTopUserAgents([]);
   renderMonitoringAlerts([]);
   if (monitoringTableBody) {
     monitoringTableBody.innerHTML = "";
@@ -374,10 +494,14 @@ function renderMonitoringSummary(summary) {
   if (monitoringMetrics.flagged) {
     monitoringMetrics.flagged.textContent = formatNumber(totals.flagged_requests || 0);
   }
+  if (monitoringMetrics.userAgents) {
+    monitoringMetrics.userAgents.textContent = formatNumber(totals.unique_user_agents || 0);
+  }
   renderStatusList(summary.status_families || {});
   renderTopApiKeys(summary.top_api_keys || []);
   renderTopClients(summary.top_clients || []);
   renderTopEndpoints(summary.top_endpoints || []);
+  renderTopUserAgents(summary.top_user_agents || []);
   renderMonitoringAlerts(summary.alerts || []);
 }
 
@@ -404,21 +528,34 @@ function renderMonitoringEvents(data) {
   if (!monitoringTableBody) {
     return;
   }
+  if (data !== undefined) {
+    monitoringEvents = Array.isArray(data?.events) ? [...data.events].reverse() : [];
+    const emptyMessage = data?.empty_message || data?.message;
+    if (typeof emptyMessage === "string" && emptyMessage.trim().length > 0) {
+      monitoringEmptyMessage = emptyMessage;
+    } else {
+      monitoringEmptyMessage = DEFAULT_MONITORING_EMPTY_MESSAGE;
+    }
+  }
+  const visibleEvents = applyMonitoringFilter(monitoringEvents);
+
   monitoringTableBody.innerHTML = "";
-  const events = Array.isArray(data?.events) ? [...data.events].reverse() : [];
-  if (events.length === 0) {
+  if (visibleEvents.length === 0) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 7;
     cell.className = "placeholder";
-    cell.textContent = apiKey
-      ? "No gateway traffic observed in the selected window."
-      : "Set the dashboard API key to load monitoring data.";
+    const message = !apiKey
+      ? "Set the dashboard API key to load monitoring data."
+      : monitoringEvents.length === 0
+      ? monitoringEmptyMessage
+      : "No events match the current filter.";
+    cell.textContent = message;
     row.append(cell);
     monitoringTableBody.append(row);
     return;
   }
-  events.forEach((event) => {
+  visibleEvents.forEach((event) => {
     const row = document.createElement("tr");
     if (event.is_flagged) {
       row.classList.add("is-flagged");
@@ -457,6 +594,16 @@ function renderMonitoringEvents(data) {
     const flagBadges = buildFlagBadges(event.flags);
     if (flagBadges) {
       endpointCell.append(flagBadges);
+    }
+    if (event.user_agent) {
+      const uaLine = document.createElement("div");
+      uaLine.className = "muted user-agent";
+      const userAgent = String(event.user_agent);
+      const maxAgentLength = 120;
+      uaLine.textContent =
+        userAgent.length > maxAgentLength ? `${userAgent.slice(0, maxAgentLength - 1)}…` : userAgent;
+      uaLine.setAttribute("title", userAgent);
+      endpointCell.append(uaLine);
     }
 
     const statusCell = document.createElement("td");
@@ -519,6 +666,16 @@ async function loadMonitoringData() {
     renderMonitoringEvents(eventsData);
 
     const parts = [];
+    const filtersMeta = summaryData?.filters || eventsData?.filters || {};
+    const ignoredClients =
+      Array.isArray(filtersMeta.ignored_clients) && filtersMeta.ignored_clients.length > 0
+        ? filtersMeta.ignored_clients
+        : Array.isArray(summaryData?.ignored_clients) && summaryData.ignored_clients.length > 0
+        ? summaryData.ignored_clients
+        : Array.isArray(eventsData?.ignored_clients) && eventsData.ignored_clients.length > 0
+        ? eventsData.ignored_clients
+        : [];
+    const filtersActive = Boolean(filtersMeta.active) || ignoredClients.length > 0;
     if (eventsData.window_minutes) {
       parts.push(`Window: last ${eventsData.window_minutes} min`);
     } else if (summaryData.time_window?.minutes) {
@@ -530,10 +687,23 @@ async function loadMonitoringData() {
       parts.push(`Events: ${eventsData.count}`);
     }
     if (summaryData.totals?.requests != null) {
-      parts.push(`Requests counted: ${formatNumber(summaryData.totals.requests)}`);
+      const label = filtersActive ? "Requests counted (filtered)" : "Requests counted";
+      parts.push(`${label}: ${formatNumber(summaryData.totals.requests)}`);
+    }
+    if (eventsData.ignored_request_count) {
+      parts.push(`Ignored requests: ${formatNumber(eventsData.ignored_request_count)}`);
     }
     if (eventsData.truncated) {
       parts.push("Log truncated to recent entries");
+    }
+    if (ignoredClients.length > 0) {
+      const displayList = ignoredClients.slice(0, 3).join(", ");
+      const suffix = ignoredClients.length > 3 ? ", …" : "";
+      parts.push(
+        ignoredClients.length === 1
+          ? `Ignoring client: ${displayList}${suffix}`
+          : `Ignoring clients: ${displayList}${suffix}`
+      );
     }
     monitoringStatus.textContent = parts.join(" · ");
   } catch (error) {
@@ -731,6 +901,15 @@ if (monitoringRefreshButton) {
       loadMonitoringData();
     }
   });
+}
+
+if (monitoringFilterInput) {
+  monitoringFilterText = normalizeFilterValue(monitoringFilterInput.value);
+  const handleMonitorFilterInput = (event) => {
+    setMonitoringFilter(event.target.value);
+  };
+  monitoringFilterInput.addEventListener("input", handleMonitorFilterInput);
+  monitoringFilterInput.addEventListener("search", handleMonitorFilterInput);
 }
 
 if (monitoringWindowSelect) {

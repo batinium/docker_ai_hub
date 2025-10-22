@@ -39,6 +39,33 @@ DASHBOARD_API_KEYS = [
     for key in os.environ.get("DASHBOARD_API_KEYS", "").split(",")
     if key.strip()
 ]
+PRIMARY_DASHBOARD_API_KEY = DASHBOARD_API_KEYS[0] if DASHBOARD_API_KEYS else None
+
+
+def gateway_headers(extra: dict | None = None) -> dict:
+    headers: dict[str, str] = {}
+    if extra:
+        headers.update(extra)
+    if PRIMARY_DASHBOARD_API_KEY:
+        headers.setdefault("X-API-Key", PRIMARY_DASHBOARD_API_KEY)
+    return headers
+
+
+def _parse_ignore_list(raw: str | None) -> tuple[str, ...]:
+    if not raw:
+        return ()
+    tokens = re.split(r"[,\s]+", raw)
+    ordered: list[str] = []
+    for token in tokens:
+        candidate = token.strip()
+        if not candidate or candidate in ordered:
+            continue
+        ordered.append(candidate)
+    return tuple(ordered)
+
+
+MONITORING_IGNORE_CLIENTS = _parse_ignore_list(os.environ.get("MONITORING_IGNORE_CLIENTS"))
+MONITORING_FILTERS_ACTIVE = bool(MONITORING_IGNORE_CLIENTS)
 
 PORTS = {
     "lmstudio": LMSTUDIO_PORT,
@@ -574,6 +601,22 @@ def _mark_suspicious(entry: dict[str, Any]) -> list[str]:
     return labels
 
 
+def _append_ignore_clients_clause(clauses: list[str], params: list[Any]) -> None:
+    if not MONITORING_IGNORE_CLIENTS:
+        return
+    placeholders = ", ".join("?" for _ in MONITORING_IGNORE_CLIENTS)
+    clauses.append(f"client_ip NOT IN ({placeholders})")
+    params.extend(MONITORING_IGNORE_CLIENTS)
+
+
+def monitoring_filters_metadata() -> dict[str, Any]:
+    return {
+        "active": MONITORING_FILTERS_ACTIVE,
+        "ignored_clients": list(MONITORING_IGNORE_CLIENTS),
+        "ignored_client_count": len(MONITORING_IGNORE_CLIENTS),
+    }
+
+
 def ensure_monitoring_storage() -> None:
     """Create SQLite storage and indexes if missing."""
     MONITORING_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -910,7 +953,12 @@ def row_to_entry(row: sqlite3.Row) -> dict[str, Any]:
     return entry
 
 
-def load_log_entries(limit: int | None = None, since: datetime | None = None) -> list[dict[str, Any]]:
+def load_log_entries(
+    limit: int | None = None,
+    since: datetime | None = None,
+    *,
+    ignore_clients: bool = True,
+) -> list[dict[str, Any]]:
     sync_log_to_database()
     query = "SELECT * FROM access_events"
     clauses: list[str] = []
@@ -919,6 +967,9 @@ def load_log_entries(limit: int | None = None, since: datetime | None = None) ->
     if since is not None:
         clauses.append("timestamp >= ?")
         params.append(since.isoformat())
+
+    if ignore_clients:
+        _append_ignore_clients_clause(clauses, params)
 
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
@@ -947,13 +998,19 @@ def load_log_entries(limit: int | None = None, since: datetime | None = None) ->
     return entries
 
 
-def count_log_entries(since: datetime | None = None) -> int:
+def count_log_entries(since: datetime | None = None, *, ignore_clients: bool = True) -> int:
     sync_log_to_database()
     query = "SELECT COUNT(*) AS total FROM access_events"
+    clauses: list[str] = []
     params: list[Any] = []
     if since is not None:
-        query += " WHERE timestamp >= ?"
+        clauses.append("timestamp >= ?")
         params.append(since.isoformat())
+    if ignore_clients:
+        _append_ignore_clients_clause(clauses, params)
+
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
 
     with get_db_connection() as conn:
         row = conn.execute(query, params).fetchone()
@@ -974,11 +1031,13 @@ def summarise_entries(entries: list[dict[str, Any]]) -> dict[str, Any]:
                 "unique_clients": 0,
                 "unique_api_keys": 0,
                 "flagged_requests": 0,
+                "unique_user_agents": 0,
             },
             "status_families": {},
             "top_clients": [],
             "top_api_keys": [],
             "top_endpoints": [],
+            "top_user_agents": [],
             "requests_per_minute": [],
             "alerts": [],
             "time_window": None,
@@ -993,6 +1052,7 @@ def summarise_entries(entries: list[dict[str, Any]]) -> dict[str, Any]:
     top_endpoints_counter = Counter()
     status_family_counter = Counter()
     flagged_count = 0
+    user_agent_counter = Counter()
 
     per_minute = defaultdict(int)
     recent_window_since = end_ts - timedelta(minutes=MONITORING_ALERT_WINDOW_MIN)
@@ -1019,6 +1079,8 @@ def summarise_entries(entries: list[dict[str, Any]]) -> dict[str, Any]:
         unique_api_keys[entry["api_key"]] += 1
         top_endpoints_counter[entry["request_path"]] += 1
         status_family_counter[entry["status_family"]] += 1
+        user_agent = entry["user_agent"] or "(unknown)"
+        user_agent_counter[user_agent] += 1
 
         bucket = entry["timestamp"].replace(second=0, microsecond=0).isoformat()
         per_minute[bucket] += 1
@@ -1087,6 +1149,11 @@ def summarise_entries(entries: list[dict[str, Any]]) -> dict[str, Any]:
         for endpoint, count in top_endpoints_counter.most_common(5)
     ]
 
+    top_user_agents = [
+        {"user_agent": agent, "count": count}
+        for agent, count in user_agent_counter.most_common(5)
+    ]
+
     status_families = dict(status_family_counter)
     requests_per_minute = sorted(
         [{"bucket": bucket, "count": count} for bucket, count in per_minute.items()],
@@ -1101,11 +1168,13 @@ def summarise_entries(entries: list[dict[str, Any]]) -> dict[str, Any]:
             "unique_clients": len(unique_clients),
             "unique_api_keys": len(unique_api_keys),
             "flagged_requests": flagged_count,
+            "unique_user_agents": len(user_agent_counter),
         },
         "status_families": status_families,
         "top_clients": top_clients,
         "top_api_keys": top_api_keys,
         "top_endpoints": top_endpoints,
+        "top_user_agents": top_user_agents,
         "requests_per_minute": requests_per_minute,
         "alerts": alerts,
         "time_window": {
@@ -1129,11 +1198,12 @@ def check_service_health(service: dict) -> tuple[bool, int | None, str]:
         return False, None, "Missing upstream endpoint"
 
     response = None
+    headers = gateway_headers()
     try:
-        response = requests.request("HEAD", endpoint, timeout=5)
+        response = requests.request("HEAD", endpoint, headers=headers, timeout=5)
     except Exception:
         try:
-            response = requests.get(endpoint, timeout=5)
+            response = requests.get(endpoint, headers=headers, timeout=5)
         except Exception as exc:
             return False, None, str(exc)
 
@@ -1151,7 +1221,7 @@ def check_service_health(service: dict) -> tuple[bool, int | None, str]:
 
 
 def fetch_json(url: str, headers: dict | None = None, timeout: int = 10) -> dict:
-    response = requests.get(url, headers=headers, timeout=timeout)
+    response = requests.get(url, headers=gateway_headers(headers), timeout=timeout)
     response.raise_for_status()
     return response.json()
 
@@ -1289,6 +1359,12 @@ async def service_status(_: None = Depends(require_api_key)):
     return {"statuses": results}
 
 
+@app.get("/api/auth/verify", response_class=JSONResponse)
+async def auth_verify(_: None = Depends(require_api_key)):
+    """Auth probe used by the nginx gateway to validate API keys."""
+    return {"ok": True}
+
+
 @app.get("/api/service-info/{service_id}", response_class=JSONResponse)
 async def service_info(service_id: str, _: None = Depends(require_api_key)):
     """Return gateway-backed live data for a given service."""
@@ -1313,6 +1389,9 @@ async def monitoring_summary(limit: int = MONITORING_MAX_SCAN, _: None = Depends
     limit = max(10, min(limit, MONITORING_MAX_SCAN))
     entries = load_log_entries(limit=limit)
     summary = summarise_entries(entries)
+    filters_meta = monitoring_filters_metadata()
+    summary["filters"] = filters_meta
+    summary["ignored_clients"] = filters_meta["ignored_clients"]
     return summary
 
 
@@ -1342,17 +1421,29 @@ async def monitoring_events(
         entries = raw_entries
         truncated = False
 
-    total = count_log_entries(since_dt)
+    filters_meta = monitoring_filters_metadata()
+    total_filtered = count_log_entries(since_dt)
+    total_raw = total_filtered
+    if filters_meta["active"]:
+        total_raw = count_log_entries(since_dt, ignore_clients=False)
+    ignored_request_count = max(total_raw - total_filtered, 0)
 
-    return {
+    response: dict[str, Any] = {
         "limit": limit,
         "count": len(entries),
-        "total": total,
+        "total": total_filtered,
+        "total_including_ignored": total_raw,
+        "ignored_request_count": ignored_request_count,
         "window_minutes": window_minutes,
         "since": since_dt.isoformat() if since_dt else None,
-        "truncated": truncated or total >= MONITORING_MAX_SCAN,
+        "truncated": truncated or total_filtered >= MONITORING_MAX_SCAN,
         "events": [serialise_entry(entry) for entry in entries],
+        "filters": filters_meta,
+        "ignored_clients": filters_meta["ignored_clients"],
     }
+    if ignored_request_count > 0 and len(entries) == 0:
+        response["empty_message"] = "Only ignored clients made requests during this window."
+    return response
 
 
 # -- API ROUTES for agent/service calls
@@ -1366,7 +1457,7 @@ async def chat(model: str = Form(...), message: str = Form(...), _: None = Depen
         "stream": False
     }
     try:
-        r = requests.post(url, json=payload, timeout=120)
+        r = requests.post(url, json=payload, headers=gateway_headers(), timeout=120)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat request failed: {e}")
@@ -1378,7 +1469,7 @@ async def list_models(_: None = Depends(require_api_key)):
     """List models currently hosted on LM Studio."""
     url = f"{GATEWAY_BASE}/lmstudio/v1/models"
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, headers=gateway_headers(), timeout=10)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Model listing failed: {e}")
@@ -1393,7 +1484,7 @@ async def lmstudio_responses(model: str = Form(...), prompt: str = Form(...), _:
         "input": prompt,
     }
     try:
-        r = requests.post(url, json=payload, timeout=120)
+        r = requests.post(url, json=payload, headers=gateway_headers(), timeout=120)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LM Studio responses failed: {e}")
@@ -1417,7 +1508,7 @@ async def lmstudio_completions(model: str = Form(...), prompt: str = Form(...), 
         payload["max_tokens"] = max_tokens_value
 
     try:
-        r = requests.post(url, json=payload, timeout=120)
+        r = requests.post(url, json=payload, headers=gateway_headers(), timeout=120)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LM Studio completions failed: {e}")
@@ -1432,7 +1523,7 @@ async def lmstudio_embeddings(model: str = Form(...), text: str = Form(...), _: 
         "input": text,
     }
     try:
-        r = requests.post(url, json=payload, timeout=60)
+        r = requests.post(url, json=payload, headers=gateway_headers(), timeout=60)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LM Studio embeddings failed: {e}")
@@ -1450,7 +1541,7 @@ async def tts(text: str = Form(...), voice: str = Form("af_bella"), _: None = De
         "speed": 1.0
     }
     try:
-        r = requests.post(url, json=payload, timeout=20)
+        r = requests.post(url, json=payload, headers=gateway_headers(), timeout=20)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS request failed: {e}")
@@ -1478,7 +1569,7 @@ async def stt(file: UploadFile = File(...), _: None = Depends(require_api_key)):
     url = f"{GATEWAY_BASE}/stt/v1/audio/transcriptions"
     try:
         files = {"file": (file.filename, file.file, file.content_type)}
-        r = requests.post(url, files=files, timeout=30)
+        r = requests.post(url, files=files, headers=gateway_headers(), timeout=30)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"STT request failed: {e}")
@@ -1499,7 +1590,7 @@ async def openwebui_chat(model: str = Form(...), message: str = Form(...), _: No
         headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
 
     try:
-        r = requests.post(url, json=payload, headers=headers, timeout=15)
+        r = requests.post(url, json=payload, headers=gateway_headers(headers), timeout=15)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Open WebUI chat failed: {e}")
@@ -1516,7 +1607,7 @@ async def gateway_chat(model: str = Form(...), message: str = Form(...), _: None
         "stream": False,
     }
     try:
-        r = requests.post(url, json=payload, timeout=120)
+        r = requests.post(url, json=payload, headers=gateway_headers(), timeout=120)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gateway chat failed: {e}")
@@ -1533,7 +1624,7 @@ async def gateway_ollama_chat(model: str = Form(...), message: str = Form(...), 
         "stream": False,
     }
     try:
-        r = requests.post(url, json=payload, timeout=120)
+        r = requests.post(url, json=payload, headers=gateway_headers(), timeout=120)
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gateway Ollama chat failed: {e}")

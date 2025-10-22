@@ -288,6 +288,10 @@
             <p class="monitoring-subtitle">Live insights generated from nginx access logs.</p>
           </div>
           <div class="monitoring-controls">
+            <label class="monitoring-filter">
+              <span>Client filter</span>
+              <input type="search" placeholder="e.g. 192.168.65.1" data-monitoring-filter>
+            </label>
             <label class="monitoring-window">
               <span>Window</span>
               <select data-monitoring-window>
@@ -317,6 +321,10 @@
             <h3>Flagged Requests</h3>
             <p class="metric-value" data-metric-flagged>—</p>
           </article>
+          <article class="metric-card">
+            <h3>Unique User Agents</h3>
+            <p class="metric-value" data-metric-user-agents>—</p>
+          </article>
         </div>
         <div class="monitoring-charts">
           <div class="chart-card">
@@ -340,6 +348,12 @@
           <div class="chart-card">
             <h3>Top Endpoints</h3>
             <ul class="chart-list" data-monitoring-endpoints>
+              <li class="placeholder">No data yet.</li>
+            </ul>
+          </div>
+          <div class="chart-card">
+            <h3>Top User Agents</h3>
+            <ul class="chart-list" data-monitoring-user-agents>
               <li class="placeholder">No data yet.</li>
             </ul>
           </div>
