@@ -18,13 +18,29 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 
+from ip_utils import resolve_local_ip
+
 # -- CONFIGURATION
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
-DEFAULT_IP = os.environ.get("LAN_IP", "127.0.0.1")
-AIHUB_IP = os.environ.get("AIHUB_IP", DEFAULT_IP)
+def _env_ip(key: str) -> str | None:
+    value = os.environ.get(key)
+    if not value:
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    lowered = candidate.lower()
+    if lowered in {"127.0.0.1", "localhost", "0.0.0.0", "::1"}:
+        return None
+    return candidate
+
+
+_RESOLVED_IP = resolve_local_ip()
+DEFAULT_IP = _env_ip("LAN_IP") or _RESOLVED_IP
+AIHUB_IP = _env_ip("AIHUB_IP") or DEFAULT_IP
 LMSTUDIO_PORT = int(os.environ.get("LMSTUDIO_PORT", 1234))
 KOKORO_PORT   = int(os.environ.get("KOKORO_PORT", 8880))
 STT_REST_PORT = int(os.environ.get("STT_REST_PORT", 10400))

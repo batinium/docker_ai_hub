@@ -24,6 +24,13 @@ from typing import Callable, Iterable, List, Optional
 
 import requests
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_DASHBOARD_DIR = _SCRIPT_DIR.parent
+if str(_DASHBOARD_DIR) not in sys.path:
+    sys.path.insert(0, str(_DASHBOARD_DIR))
+
+from ip_utils import resolve_local_ip
+
 
 def _load_env_defaults() -> None:
     """Populate os.environ from the repository-level .env if available."""
@@ -279,7 +286,9 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["server", "client", "all"], default="all",
                         help="Choose which set of endpoints to verify.")
-    parser.add_argument("--ip", default=os.environ.get("AIHUB_IP", os.environ.get("LAN_IP", "127.0.0.1")),
+    env_ip = os.environ.get("AIHUB_IP") or os.environ.get("LAN_IP")
+    env_ip = env_ip.strip() if env_ip else None
+    parser.add_argument("--ip", default=env_ip or resolve_local_ip(),
                         help="AI Hub host/IP to target.")
     parser.add_argument("--gateway-port", type=int, default=int(os.environ.get("GATEWAY_PORT", 8080)))
     parser.add_argument("--timeout", type=int, default=int(os.environ.get("CONNECTIVITY_TIMEOUT", DEFAULT_TIMEOUT)),

@@ -71,12 +71,55 @@ flowchart LR
 
 ## Quick Start
 
+### Arch Linux / CachyOS Setup
+
+1. **Install Docker and Docker Compose:**
+   ```bash
+   sudo pacman -S docker docker-compose
+   sudo systemctl enable --now docker
+   sudo usermod -aG docker $USER
+   # Log out and back in for group membership to take effect
+   ```
+
+2. **Clone and prepare `.env`:**
+   ```bash
+   git clone <repo-url> && cd docker_ai_hub
+   cp .env.example .env
+   ```
+   - Set `LAN_IP` to your machine's network IP address (auto-detected: `192.168.1.105`)
+   - Optionally define `DASHBOARD_API_KEYS` (comma-separated) to require an `X-API-Key`
+   - Populate any model defaults (`LMSTUDIO_MODEL`, `OLLAMA_MODEL`, `KOKORO_VOICE`, etc.)
+
+3. **Create required directories:**
+   ```bash
+   mkdir -p dashboard/data proxy/logs faster-whisper-data openwebui-data
+   ```
+
+4. **Run the full stack with Docker:**
+   ```bash
+   docker compose up -d
+   docker ps --format 'table {{.Names}}\t{{.Status}}'
+   ```
+   The `proxy` container listens on port `8080`, and the dashboard lives on `8090`.
+
+5. **Access the dashboard:**
+   Visit `http://<AIHUB_IP>:8090` (or use the `tailnet-ip` published in `.env`). Paste your dashboard API key into the header field if authentication is enabled.
+
+6. **Verify the gateway:**
+   ```bash
+   source .venv-client/bin/activate       # if using the client venv
+   python dashboard/scripts/connectivity_check.py
+   ```
+   The script now reads `.env` automatically. Use CLI flags (`--ip`, `--lmstudio-model`, etc.) to override defaults.
+
+### General Setup (macOS/Other Linux)
+
 1. **Clone and prepare `.env`:**
    ```bash
    git clone <repo-url> && cd aihub
    cp .env.example .env
    ```
-   - Set `LAN_IP` (or overwrite with `AIHUB_IP`) to the machine’s reachable address.
+   - Set `LAN_IP` (or overwrite with `AIHUB_IP`) to the machine's reachable address.
    - Optionally define `DASHBOARD_API_KEYS` (comma-separated) to require an `X-API-Key`.
    - Populate any model defaults (`LMSTUDIO_MODEL`, `OLLAMA_MODEL`, `KOKORO_VOICE`, etc.).
 
@@ -88,10 +131,10 @@ flowchart LR
    ```
    The `proxy` container listens on port `8080`, and the dashboard lives on `8090`.
 
-3. **Access the dashboard:**  
+3. **Access the dashboard:**
    Visit `http://<AIHUB_IP>:8090` (or use the `tailnet-ip` published in `.env`). Paste your dashboard API key into the header field if authentication is enabled.
 
-4. **Verify the gateway:**  
+4. **Verify the gateway:**
    ```bash
    source .venv-client/bin/activate       # if using the client venv
    python dashboard/scripts/connectivity_check.py
@@ -188,14 +231,29 @@ Any value present in `.env` is now automatically injected into the helper script
 
 ---
 
+## Platform-Specific Notes
+
+### Linux Compatibility
+
+This project has been adapted for Linux (tested on Arch Linux / CachyOS):
+
+- **Host Network Access**: The `proxy-gateway` container uses `extra_hosts` with `host.docker.internal:host-gateway` to enable access to services running on the host machine (LM Studio, Ollama, etc.). This replicates the macOS Docker Desktop behavior on Linux.
+- **User Permissions**: The `PUID` and `PGID` environment variables in `docker-compose.yml` are set to `1000` (default Linux user). Adjust if your user ID differs by checking `id -u` and `id -g`.
+- **File Paths**: All scripts now use relative paths based on the project directory rather than hardcoded absolute paths.
+
+### macOS
+
+The project originally targeted macOS but maintains compatibility through the `host.docker.internal` DNS name provided by Docker Desktop.
+
 ## Troubleshooting
 
 - **401 from Open WebUI** – Set `OPENWEBUI_API_KEY` in `.env` or pass `--openwebui-api-key`. The gateway relays headers transparently.
 - **Monitoring view empty** – Confirm the dashboard container mounts the nginx log directory read-only (`./proxy/logs:/var/log/nginx`) and restart the proxy after updating `proxy/nginx.conf` so the JSON format is active. The dashboard will fall back to parsing the combined log format if necessary (without API-key metadata).
-- **Embeddings 404** – Ensure the embedding-capable model is actually “served” inside LM Studio. Re-download if loading was interrupted.
+- **Embeddings 404** – Ensure the embedding-capable model is actually "served" inside LM Studio. Re-download if loading was interrupted.
 - **Audio uploads rejected** – FastAPI endpoints allow up to `200 MB` for STT and `50 MB` for TTS through nginx; adjust `proxy/nginx.conf` if needed.
 - **Gateway reachable but empty responses** – Run `python dashboard/scripts/connectivity_check.py --mode all` to confirm each upstream is healthy, then inspect container logs (`docker compose logs -f <service>`).
 - **Missing env values in scripts** – `ai_agent_example.py` and `connectivity_check.py` now load `.env` automatically, but they preserve existing environment variables; export overrides before running if you need different settings for a single session.
+- **Docker permission denied** (Linux) – Ensure your user is in the `docker` group: `sudo usermod -aG docker $USER`, then log out and back in.
 
 ---
 

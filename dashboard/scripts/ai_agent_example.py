@@ -34,6 +34,13 @@ import mimetypes
 
 import requests
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_DASHBOARD_DIR = _SCRIPT_DIR.parent
+if str(_DASHBOARD_DIR) not in sys.path:
+    sys.path.insert(0, str(_DASHBOARD_DIR))
+
+from ip_utils import resolve_local_ip
+
 
 def _load_env_defaults() -> None:
     """Populate os.environ from repository-level .env if present."""
@@ -67,7 +74,9 @@ _load_env_defaults()
 
 
 def _default_host() -> str:
-    return os.environ.get("AIHUB_IP", os.environ.get("LAN_IP", "127.0.0.1"))
+    env_ip = os.environ.get("AIHUB_IP") or os.environ.get("LAN_IP")
+    env_ip = env_ip.strip() if env_ip else None
+    return env_ip or resolve_local_ip()
 
 
 def _build_url(host: str, port: int, path: str) -> str:

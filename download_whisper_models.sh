@@ -2,7 +2,9 @@
 set -euo pipefail
 
 CONTAINER_NAME="faster-whisper"
-CONFIG_VOLUME_PATH="${HOME}/aihub/faster-whisper-data"   # adjust if needed
+# Determine the project directory dynamically
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_VOLUME_PATH="${SCRIPT_DIR}/faster-whisper-data"   # relative to project root
 LANG="en"
 
 # Broad list of model sizes (use valid names from docs)
