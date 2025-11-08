@@ -240,6 +240,7 @@ This project has been adapted for Linux (tested on Arch Linux / CachyOS):
 - **Host Network Access**: The `proxy-gateway` container uses `extra_hosts` with `host.docker.internal:host-gateway` to enable access to services running on the host machine (LM Studio, Ollama, etc.). This replicates the macOS Docker Desktop behavior on Linux.
 - **User Permissions**: The `PUID` and `PGID` environment variables in `docker-compose.yml` are set to `1000` (default Linux user). Adjust if your user ID differs by checking `id -u` and `id -g`.
 - **File Paths**: All scripts now use relative paths based on the project directory rather than hardcoded absolute paths.
+- **Dashboard Workers**: The dashboard now runs with multiple uvicorn workers (`--workers 2`) to prevent request timeouts when handling concurrent auth requests through the nginx gateway.
 
 ### macOS
 
@@ -251,6 +252,7 @@ The project originally targeted macOS but maintains compatibility through the `h
 - **Monitoring view empty** – Confirm the dashboard container mounts the nginx log directory read-only (`./proxy/logs:/var/log/nginx`) and restart the proxy after updating `proxy/nginx.conf` so the JSON format is active. The dashboard will fall back to parsing the combined log format if necessary (without API-key metadata).
 - **Embeddings 404** – Ensure the embedding-capable model is actually "served" inside LM Studio. Re-download if loading was interrupted.
 - **Audio uploads rejected** – FastAPI endpoints allow up to `200 MB` for STT and `50 MB` for TTS through nginx; adjust `proxy/nginx.conf` if needed.
+- **Gateway requests timeout (HTTP 499)** – The dashboard container now runs with multiple uvicorn workers to handle concurrent authentication requests. If timeouts persist, check nginx access logs for errors and verify the dashboard is healthy with `docker logs aihub_dashboard`.
 - **Gateway reachable but empty responses** – Run `python dashboard/scripts/connectivity_check.py --mode all` to confirm each upstream is healthy, then inspect container logs (`docker compose logs -f <service>`).
 - **Missing env values in scripts** – `ai_agent_example.py` and `connectivity_check.py` now load `.env` automatically, but they preserve existing environment variables; export overrides before running if you need different settings for a single session.
 - **Docker permission denied** (Linux) – Ensure your user is in the `docker` group: `sudo usermod -aG docker $USER`, then log out and back in.

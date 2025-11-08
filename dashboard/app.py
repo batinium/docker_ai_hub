@@ -48,6 +48,16 @@ OPENWEBUI_PORT = int(os.environ.get("OPENWEBUI_PORT", 3000))
 GATEWAY_PORT = int(os.environ.get("GATEWAY_PORT", 8080))
 LMSTUDIO_DEFAULT_MODEL = os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b")
 STATIC_VERSION = os.environ.get("STATIC_VERSION") or str(int(time.time()))
+
+# Internal gateway URL for inter-container communication
+# Use container name when running in Docker, otherwise use the external IP
+_IS_CONTAINER = Path("/.dockerenv").exists()
+INTERNAL_GATEWAY_URL = (
+    os.environ.get("INTERNAL_GATEWAY_URL")
+    or ("http://ai_proxy_gateway" if _IS_CONTAINER else f"http://{AIHUB_IP}:{GATEWAY_PORT}")
+)
+
+# External gateway base for displaying to users
 GATEWAY_BASE = f"http://{AIHUB_IP}:{GATEWAY_PORT}"
 OPENWEBUI_API_KEY = os.environ.get("OPENWEBUI_API_KEY")
 DASHBOARD_API_KEYS = [
@@ -1213,6 +1223,10 @@ def check_service_health(service: dict) -> tuple[bool, int | None, str]:
     if not endpoint:
         return False, None, "Missing upstream endpoint"
 
+    # Replace external GATEWAY_BASE with internal URL for inter-container communication
+    if endpoint.startswith(GATEWAY_BASE):
+        endpoint = endpoint.replace(GATEWAY_BASE, INTERNAL_GATEWAY_URL, 1)
+
     response = None
     headers = gateway_headers()
     try:
@@ -1243,7 +1257,7 @@ def fetch_json(url: str, headers: dict | None = None, timeout: int = 10) -> dict
 
 
 def info_lmstudio_models() -> dict:
-    data = fetch_json(f"{GATEWAY_BASE}/lmstudio/v1/models")
+    data = fetch_json(f"{INTERNAL_GATEWAY_URL}/lmstudio/v1/models")
     models = data.get("data") or data.get("models") or []
     return {"count": len(models), "models": models}
 
@@ -1253,8 +1267,8 @@ def info_openwebui_models() -> dict:
     if OPENWEBUI_API_KEY:
         headers["Authorization"] = f"Bearer {OPENWEBUI_API_KEY}"
     endpoints = [
-        f"{GATEWAY_BASE}/openwebui/api/models",
-        f"{GATEWAY_BASE}/openwebui/api/chat/models",
+        f"{INTERNAL_GATEWAY_URL}/openwebui/api/models",
+        f"{INTERNAL_GATEWAY_URL}/openwebui/api/chat/models",
     ]
     last_error: Exception | None = None
     for endpoint in endpoints:
@@ -1271,15 +1285,15 @@ def info_openwebui_models() -> dict:
 
 
 def info_ollama_models() -> dict:
-    data = fetch_json(f"{GATEWAY_BASE}/ollama/api/tags")
+    data = fetch_json(f"{INTERNAL_GATEWAY_URL}/ollama/api/tags")
     models = data.get("models", [])
     return {"count": len(models), "models": models}
 
 
 def info_kokoro_voices() -> dict:
     endpoints = [
-        f"{GATEWAY_BASE}/kokoro/v1/voices",
-        f"{GATEWAY_BASE}/kokoro/voices",
+        f"{INTERNAL_GATEWAY_URL}/kokoro/v1/voices",
+        f"{INTERNAL_GATEWAY_URL}/kokoro/voices",
     ]
     last_error: Exception | None = None
     for endpoint in endpoints:
@@ -1304,7 +1318,7 @@ def info_kokoro_voices() -> dict:
 
 
 def info_faster_whisper_models() -> dict:
-    data = fetch_json(f"{GATEWAY_BASE}/stt/v1/models")
+    data = fetch_json(f"{INTERNAL_GATEWAY_URL}/stt/v1/models")
     models = data.get("data") or data.get("models") or []
     return {"count": len(models), "models": models}
 
@@ -1466,7 +1480,7 @@ async def monitoring_events(
 @app.post("/api/chat")
 async def chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
     """Send a chat request to LM Studio."""
-    url = f"{GATEWAY_BASE}/lmstudio/v1/chat/completions"
+    url = f"{INTERNAL_GATEWAY_URL}/lmstudio/v1/chat/completions"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": message}],
@@ -1483,7 +1497,7 @@ async def chat(model: str = Form(...), message: str = Form(...), _: None = Depen
 @app.post("/api/lmstudio/models")
 async def list_models(_: None = Depends(require_api_key)):
     """List models currently hosted on LM Studio."""
-    url = f"{GATEWAY_BASE}/lmstudio/v1/models"
+    url = f"{INTERNAL_GATEWAY_URL}/lmstudio/v1/models"
     try:
         r = requests.get(url, headers=gateway_headers(), timeout=10)
         r.raise_for_status()
@@ -1494,7 +1508,7 @@ async def list_models(_: None = Depends(require_api_key)):
 @app.post("/api/lmstudio/responses")
 async def lmstudio_responses(model: str = Form(...), prompt: str = Form(...), _: None = Depends(require_api_key)):
     """Proxy the LM Studio Responses endpoint."""
-    url = f"{GATEWAY_BASE}/lmstudio/v1/responses"
+    url = f"{INTERNAL_GATEWAY_URL}/lmstudio/v1/responses"
     payload = {
         "model": model,
         "input": prompt,
@@ -1509,7 +1523,7 @@ async def lmstudio_responses(model: str = Form(...), prompt: str = Form(...), _:
 @app.post("/api/lmstudio/completions")
 async def lmstudio_completions(model: str = Form(...), prompt: str = Form(...), max_tokens: str = Form(""), _: None = Depends(require_api_key)):
     """Proxy the OpenAI-compatible Completions endpoint."""
-    url = f"{GATEWAY_BASE}/lmstudio/v1/completions"
+    url = f"{INTERNAL_GATEWAY_URL}/lmstudio/v1/completions"
     payload = {
         "model": model,
         "prompt": prompt,
@@ -1533,7 +1547,7 @@ async def lmstudio_completions(model: str = Form(...), prompt: str = Form(...), 
 @app.post("/api/lmstudio/embeddings")
 async def lmstudio_embeddings(model: str = Form(...), text: str = Form(...), _: None = Depends(require_api_key)):
     """Proxy the embeddings endpoint to generate vectors."""
-    url = f"{GATEWAY_BASE}/lmstudio/v1/embeddings"
+    url = f"{INTERNAL_GATEWAY_URL}/lmstudio/v1/embeddings"
     payload = {
         "model": model,
         "input": text,
@@ -1548,7 +1562,7 @@ async def lmstudio_embeddings(model: str = Form(...), text: str = Form(...), _: 
 @app.post("/api/tts")
 async def tts(text: str = Form(...), voice: str = Form("af_bella"), _: None = Depends(require_api_key)):
     """Generate TTS via Kokoro, save locally and return playback path."""
-    url = f"{GATEWAY_BASE}/kokoro/v1/audio/speech"
+    url = f"{INTERNAL_GATEWAY_URL}/kokoro/v1/audio/speech"
     payload = {
         "model": "kokoro",
         "input": text,
@@ -1582,7 +1596,7 @@ async def tts(text: str = Form(...), voice: str = Form("af_bella"), _: None = De
 @app.post("/api/stt")
 async def stt(file: UploadFile = File(...), _: None = Depends(require_api_key)):
     """Upload a WAV/MP3 file and transcribe via Faster-Whisper REST."""
-    url = f"{GATEWAY_BASE}/stt/v1/audio/transcriptions"
+    url = f"{INTERNAL_GATEWAY_URL}/stt/v1/audio/transcriptions"
     try:
         files = {"file": (file.filename, file.file, file.content_type)}
         r = requests.post(url, files=files, headers=gateway_headers(), timeout=30)
@@ -1596,7 +1610,7 @@ async def stt(file: UploadFile = File(...), _: None = Depends(require_api_key)):
 @app.post("/api/openwebui/chat")
 async def openwebui_chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
     """Send a chat completion request through Open WebUI."""
-    url = f"{GATEWAY_BASE}/openwebui/api/chat/completions"
+    url = f"{INTERNAL_GATEWAY_URL}/openwebui/api/chat/completions"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": message}],
@@ -1616,7 +1630,7 @@ async def openwebui_chat(model: str = Form(...), message: str = Form(...), _: No
 @app.post("/api/gateway/chat")
 async def gateway_chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
     """Relay chat completions through the nginx gateway."""
-    url = f"{GATEWAY_BASE}/lmstudio/v1/chat/completions"
+    url = f"{INTERNAL_GATEWAY_URL}/lmstudio/v1/chat/completions"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": message}],
@@ -1633,7 +1647,7 @@ async def gateway_chat(model: str = Form(...), message: str = Form(...), _: None
 @app.post("/api/gateway/ollama/chat")
 async def gateway_ollama_chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
     """Relay chat completions to Ollama through the nginx gateway."""
-    url = f"{GATEWAY_BASE}/ollama/v1/chat/completions"
+    url = f"{INTERNAL_GATEWAY_URL}/ollama/v1/chat/completions"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": message}],
