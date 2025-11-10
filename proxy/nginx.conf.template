@@ -6,6 +6,7 @@ worker_processes  1;
 events { worker_connections 1024; }
 
 http {
+  resolver 127.0.0.11 valid=30s;
   map $http_x_api_key $access_api_key {
     default $http_x_api_key;
     "" "-";

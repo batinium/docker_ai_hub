@@ -348,7 +348,7 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
                         help="Model ID to use for LM Studio chat tests.")
     parser.add_argument("--openwebui-model", default=os.environ.get("OPENWEBUI_MODEL"),
                         help="Model ID to use for Open WebUI chat tests.")
-    parser.add_argument("--ollama-model", default=os.environ.get("OLLAMA_MODEL", "gemma3:4b"),
+    parser.add_argument("--ollama-model", default=os.environ.get("OLLAMA_MODEL", "gemma3:1b"),
                         help="Model ID to use for Ollama chat tests.")
     parser.add_argument("--openrouter-model", default=os.environ.get("OPENROUTER_MODEL", "z-ai/glm-4.5-air:free"),
                         help="Model ID to use for OpenRouter chat tests.")
