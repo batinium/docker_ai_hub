@@ -175,6 +175,7 @@ Because the monitoring view relies on the dashboard API key, make sure to paste 
 | `lmstudio-completions`| `/lmstudio/v1/completions`            | Legacy text completions.                                                 |
 | `lmstudio-embeddings` | `/lmstudio/v1/embeddings`             | Vector embeddings for retrieval workflows.                               |
 | `openwebui-chat`      | `/openwebui/api/chat/completions`     | Delegates chat requests to Open WebUI (backed by Ollama).                |
+| `openrouter-chat`     | `/openrouter/v1/chat/completions`     | Relays chat prompts to OpenRouter using the gateway's stored API key.    |
 | `gateway-ollama-chat` | `/ollama/v1/chat/completions`         | Direct gateway relay to Ollama without WebUI tooling.                    |
 | `kokoro-tts`          | `/kokoro/v1/audio/speech`             | Text-to-speech; returns MP3 audio.                                       |
 | `faster-whisper-stt`  | `/stt/v1/audio/transcriptions`        | Speech-to-text via Faster Whisper REST.                                  |
@@ -224,6 +225,8 @@ All requests accept `X-API-Key` when the dashboard is locked down. Additional pr
 | `OLLAMA_MODEL`           | Default Ollama/Open WebUI model (`gemma3:4b`).                                              |
 | `KOKORO_VOICE`           | Default Kokoro voice (`af_bella`).                                                          |
 | `OPENWEBUI_API_KEY`      | Bearer token for Open WebUI when authentication is enabled.                                 |
+| `OPENROUTER_API_KEY`     | Bearer token forwarded to OpenRouter by the gateway.                                        |
+| `OPENROUTER_MODEL`       | Default OpenRouter model used by the dashboard demos (`openrouter/auto`).                   |
 | `DASHBOARD_API_KEYS`     | Comma-separated list of keys accepted by the dashboard and gateway (`X-API-Key` header).    |
 | `AGENT_TIMEOUT`          | Request timeout used by the agent example (seconds).                                        |
 

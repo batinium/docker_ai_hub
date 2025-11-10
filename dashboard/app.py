@@ -60,12 +60,14 @@ INTERNAL_GATEWAY_URL = (
 # External gateway base for displaying to users
 GATEWAY_BASE = f"http://{AIHUB_IP}:{GATEWAY_PORT}"
 OPENWEBUI_API_KEY = os.environ.get("OPENWEBUI_API_KEY")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 DASHBOARD_API_KEYS = [
     key.strip()
     for key in os.environ.get("DASHBOARD_API_KEYS", "").split(",")
     if key.strip()
 ]
 PRIMARY_DASHBOARD_API_KEY = DASHBOARD_API_KEYS[0] if DASHBOARD_API_KEYS else None
+OPENROUTER_DEFAULT_MODEL = os.environ.get("OPENROUTER_MODEL", "openrouter/auto")
 
 
 def gateway_headers(extra: dict | None = None) -> dict:
@@ -462,6 +464,54 @@ SERVICES = [
             "    \"Authorization\": \"Bearer YOUR_OPENWEBUI_KEY\",",
             "}",
             "response = requests.post(url, json=payload, headers=headers, timeout=60)",
+            "response.raise_for_status()",
+            "print(response.json())",
+        ]),
+    },
+    {
+        "id": "openrouter-chat",
+        "name": "Chat (OpenRouter)",
+        "provider": "OpenRouter",
+        "category": "Language Models",
+        "method": "POST",
+        "local_endpoint": "/api/openrouter/chat",
+        "upstream_endpoint": f"{GATEWAY_BASE}/openrouter/v1/chat/completions",
+        "summary": "Send chat prompts through the OpenRouter network using the server-side API key.",
+        "inputs": [
+            {"field": "model", "type": "text", "description": "OpenRouter model identifier (e.g. `openrouter/auto`)."},
+            {"field": "message", "type": "textarea", "description": "Prompt content forwarded to OpenRouter."}
+        ],
+        "notes": [
+            "Set `OPENROUTER_API_KEY` in the environment so the gateway can authorise upstream requests.",
+            "OpenRouter honours the OpenAI Chat Completions schema; enable streaming by setting `stream` in the payload when extending the proxy."
+        ],
+        "sample_payload": {
+            "model": OPENROUTER_DEFAULT_MODEL,
+            "messages": [{"role": "user", "content": "Summarise the AI Hub routing architecture."}],
+            "stream": False
+        },
+        "form_defaults": {
+            "model": OPENROUTER_DEFAULT_MODEL,
+            "message": "Summarise the AI Hub routing architecture."
+        },
+        "curl_example": "\n".join([
+            "curl -X POST \\",
+            f"  {GATEWAY_BASE}/openrouter/v1/chat/completions \\",
+            "  -H 'Content-Type: application/json' \\",
+            "  -H 'X-API-Key: YOUR_DASHBOARD_API_KEY' \\",
+            "  -d '{\"model\":\"" + OPENROUTER_DEFAULT_MODEL + "\",\"messages\":[{\"role\":\"user\",\"content\":\"Summarise the AI Hub routing architecture.\"}],\"stream\":false}'"
+        ]),
+        "python_example": "\n".join([
+            "import requests",
+            "",
+            f"url = \"{GATEWAY_BASE}/openrouter/v1/chat/completions\"",
+            "payload = {",
+                "    \"model\": \"" + OPENROUTER_DEFAULT_MODEL + "\",",
+                "    \"messages\": [{\"role\": \"user\", \"content\": \"Summarise the AI Hub routing architecture.\"}],",
+                "    \"stream\": False",
+            "}",
+            "headers = {\"X-API-Key\": \"YOUR_DASHBOARD_API_KEY\"}",
+            "response = requests.post(url, json=payload, headers=headers, timeout=120)",
             "response.raise_for_status()",
             "print(response.json())",
         ]),
@@ -1284,6 +1334,15 @@ def info_openwebui_models() -> dict:
     return {"count": 0, "models": []}
 
 
+def info_openrouter_models() -> dict:
+    headers = {}
+    if OPENROUTER_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY}"
+    data = fetch_json(f"{INTERNAL_GATEWAY_URL}/openrouter/v1/models", headers=headers)
+    models = data.get("data") or data.get("models") or []
+    return {"count": len(models), "models": models}
+
+
 def info_ollama_models() -> dict:
     data = fetch_json(f"{INTERNAL_GATEWAY_URL}/ollama/api/tags")
     models = data.get("models", [])
@@ -1330,6 +1389,7 @@ SERVICE_INFO_HANDLERS: dict[str, Callable[[], dict]] = {
     "lmstudio-completions": info_lmstudio_models,
     "lmstudio-embeddings": info_lmstudio_models,
     "openwebui-chat": info_openwebui_models,
+    "openrouter-chat": info_openrouter_models,
     "gateway-ollama-chat": info_ollama_models,
     "kokoro-tts": info_kokoro_voices,
     "faster-whisper-stt": info_faster_whisper_models,
@@ -1624,6 +1684,27 @@ async def openwebui_chat(model: str = Form(...), message: str = Form(...), _: No
         r.raise_for_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Open WebUI chat failed: {e}")
+    return JSONResponse(content={"status": r.status_code, "response": r.json()})
+
+
+@app.post("/api/openrouter/chat")
+async def openrouter_chat(model: str = Form(...), message: str = Form(...), _: None = Depends(require_api_key)):
+    """Send a chat completion request through OpenRouter."""
+    url = f"{INTERNAL_GATEWAY_URL}/openrouter/v1/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": message}],
+        "stream": False,
+    }
+    headers = {}
+    if OPENROUTER_API_KEY:
+        headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY}"
+
+    try:
+        r = requests.post(url, json=payload, headers=gateway_headers(headers), timeout=120)
+        r.raise_for_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OpenRouter chat failed: {e}")
     return JSONResponse(content={"status": r.status_code, "response": r.json()})
 
 

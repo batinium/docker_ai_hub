@@ -95,6 +95,7 @@ class TestContext:
     lmstudio_model: Optional[str]
     openwebui_model: Optional[str]
     ollama_model: Optional[str]
+    openrouter_model: Optional[str]
     kokoro_voice: str
     openwebui_api_key: Optional[str]
     dashboard_api_key: Optional[str]
@@ -269,11 +270,61 @@ def gateway_ollama_chat(session: requests.Session, ctx: TestContext) -> TestResu
         return TestResult("Gateway → Ollama chat", False, status, str(exc), elapsed)
 
 
+def openrouter_chat(session: requests.Session, ctx: TestContext) -> TestResult:
+    """Test OpenRouter chat completions through the gateway."""
+    if not ctx.openrouter_model:
+        return TestResult("Gateway → OpenRouter chat", True, None, "Skipped (no OpenRouter model provided)", 0.0)
+    url = f"http://{ctx.ip}:{ctx.gateway_port}/openrouter/v1/chat/completions"
+    payload = {
+        "model": ctx.openrouter_model,
+        "messages": [{"role": "user", "content": "Say 'Hello' in one word."}],
+        "stream": False,
+    }
+    start = time.perf_counter()
+    try:
+        resp = session.post(url, json=payload, headers=_headers(ctx.dashboard_api_key), timeout=ctx.timeout)
+        elapsed = time.perf_counter() - start
+        resp.raise_for_status()
+        data = resp.json()
+        ok = bool(data.get("choices"))
+        if ok:
+            content = data["choices"][0].get("message", {}).get("content", "")
+            detail = f"Received response: {content[:50]}..." if len(content) > 50 else f"Received response: {content}"
+        else:
+            detail = "Empty response"
+        return TestResult("Gateway → OpenRouter chat", ok, resp.status_code, detail, elapsed)
+    except Exception as exc:
+        elapsed = time.perf_counter() - start
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return TestResult("Gateway → OpenRouter chat", False, status, str(exc), elapsed)
+
+
+def openrouter_models(session: requests.Session, ctx: TestContext) -> TestResult:
+    """Test OpenRouter models list endpoint."""
+    url = f"http://{ctx.ip}:{ctx.gateway_port}/openrouter/v1/models"
+    start = time.perf_counter()
+    try:
+        resp = session.get(url, headers=_headers(ctx.dashboard_api_key), timeout=ctx.timeout)
+        elapsed = time.perf_counter() - start
+        resp.raise_for_status()
+        data = resp.json()
+        models = data.get("data") or []
+        ok = isinstance(models, list) and len(models) > 0
+        detail = f"{len(models)} models listed" if ok else "No models reported"
+        return TestResult("Gateway → OpenRouter models", ok, resp.status_code, detail, elapsed)
+    except Exception as exc:
+        elapsed = time.perf_counter() - start
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return TestResult("Gateway → OpenRouter models", False, status, str(exc), elapsed)
+
+
 GATEWAY_TESTS: Iterable[TestFunc] = (
     lmstudio_models,
     lmstudio_chat,
     openwebui_chat,
     gateway_ollama_chat,
+    openrouter_models,
+    openrouter_chat,
     kokoro_tts,
     faster_whisper_stt,
 )
@@ -299,6 +350,8 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
                         help="Model ID to use for Open WebUI chat tests.")
     parser.add_argument("--ollama-model", default=os.environ.get("OLLAMA_MODEL", "gemma3:4b"),
                         help="Model ID to use for Ollama chat tests.")
+    parser.add_argument("--openrouter-model", default=os.environ.get("OPENROUTER_MODEL", "z-ai/glm-4.5-air:free"),
+                        help="Model ID to use for OpenRouter chat tests.")
     parser.add_argument("--kokoro-voice", default=os.environ.get("KOKORO_VOICE", "af_bella"),
                         help="Voice preset to use for Kokoro speech tests.")
     parser.add_argument("--openwebui-api-key", default=os.environ.get("OPENWEBUI_API_KEY"),
@@ -326,6 +379,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         lmstudio_model=args.lmstudio_model,
         openwebui_model=args.openwebui_model,
         ollama_model=args.ollama_model,
+        openrouter_model=args.openrouter_model,
         kokoro_voice=args.kokoro_voice,
         openwebui_api_key=args.openwebui_api_key,
         dashboard_api_key=dashboard_api_key,

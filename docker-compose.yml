@@ -6,10 +6,13 @@ services:
     ports:
       - "8080:80"             # Port visible via Tailscale
     volumes:
-      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro   # Mount the host file to container
+      - ./proxy/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro   # Mount template for envsubst
       - ./proxy/logs:/var/log/nginx                   # Mount log directory
     extra_hosts:
       - "host.docker.internal:host-gateway"  # Linux compatibility for host access
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
     restart: unless-stopped
 
   openwebui:
@@ -78,6 +81,8 @@ services:
       - AIHUB_IP=${AIHUB_IP:-${LAN_IP}}
       - LAN_IP=${LAN_IP}
       - DASHBOARD_API_KEYS=${DASHBOARD_API_KEYS}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL}
     restart: unless-stopped
     depends_on:
       - kokoro

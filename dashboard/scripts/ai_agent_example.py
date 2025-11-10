@@ -7,6 +7,8 @@ The script shows how to:
   * Send chat completions to LM Studio (direct or via the gateway)
   * Call the LM Studio responses, completions, and embeddings endpoints
   * Query Open WebUI (delegated to Ollama)
+  * Query OpenRouter (via gateway with free model)
+  * Query Ollama directly through gateway
   * Generate speech with Kokoro
   * Transcribe audio with Faster Whisper
 
@@ -136,12 +138,13 @@ class HubConfig:
     openwebui_port: int = int(os.environ.get("OPENWEBUI_PORT", 3000))
     kokoro_port: int = int(os.environ.get("KOKORO_PORT", 8880))
     stt_port: int = int(os.environ.get("STT_REST_PORT", 10400))
-    lmstudio_model: str = os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b")
+    lmstudio_model: str = os.environ.get("LMSTUDIO_MODEL", "qwen/qwen3-1.7b")
     lmstudio_completion_model: Optional[str] = os.environ.get("LMSTUDIO_COMPLETION_MODEL")
     lmstudio_embedding_model: Optional[str] = os.environ.get(
         "LMSTUDIO_EMBEDDING_MODEL", "text-embedding-qwen3-embedding-0.6b"
     )
     ollama_model: str = os.environ.get("OLLAMA_MODEL", "gemma3:4b")
+    openrouter_model: str = os.environ.get("OPENROUTER_MODEL", "z-ai/glm-4.5-air:free")
     kokoro_voice: str = os.environ.get("KOKORO_VOICE", "af_bella")
     openwebui_api_key: Optional[str] = os.environ.get("OPENWEBUI_API_KEY")
     dashboard_api_key: Optional[str] = _env_dashboard_api_key()
@@ -219,6 +222,21 @@ class AIHubClient:
         url = _build_url(self.config.host, self.config.gateway_port, "/ollama/v1/chat/completions")
         payload = {"model": self.config.ollama_model, "messages": list(messages), "stream": False}
         resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    def chat_openrouter(self, messages: Iterable[Dict[str, str]]) -> Dict:
+        """Call OpenRouter through the nginx gateway."""
+        url = _build_url(self.config.host, self.config.gateway_port, "/openrouter/v1/chat/completions")
+        payload = {"model": self.config.openrouter_model, "messages": list(messages), "stream": False}
+        resp = self.session.post(url, json=payload, headers=_json_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    def models_openrouter(self) -> Dict:
+        """List models available from OpenRouter."""
+        url = _build_url(self.config.host, self.config.gateway_port, "/openrouter/v1/models")
+        resp = self.session.get(url, headers=_auth_headers(self.config.dashboard_api_key), timeout=self.config.timeout)
         resp.raise_for_status()
         return resp.json()
 
@@ -319,6 +337,32 @@ def run_demo(config: HubConfig) -> None:
     print()
 
     try:
+        openrouter_models = client.models_openrouter()
+        model_entries = openrouter_models.get("data") or []
+        print("OpenRouter models endpoint:")
+        if isinstance(model_entries, list) and model_entries:
+            print(f"Found {len(model_entries)} models. Sample:")
+            print(json.dumps(model_entries[:3], indent=2))
+        else:
+            print(json.dumps(openrouter_models, indent=2)[:600])
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "?"
+        detail = exc.response.text[:200] if exc.response is not None else str(exc)
+        print(f"OpenRouter models endpoint failed (status {status}): {detail}")
+    print()
+
+    try:
+        openrouter = client.chat_openrouter(prompt)
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "?"
+        detail = exc.response.text[:200] if exc.response is not None else str(exc)
+        print(f"OpenRouter chat endpoint failed (status {status}): {detail}")
+    else:
+        print("OpenRouter response (gateway /openrouter):")
+        print(json.dumps(openrouter, indent=2)[:600])
+    print()
+
+    try:
         response = client.respond_lmstudio("Briefly describe the AI Hub architecture.")
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "?"
@@ -396,6 +440,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default=os.environ.get("LMSTUDIO_EMBEDDING_MODEL", "text-embedding-qwen3-embedding-0.6b"),
     )
     parser.add_argument("--ollama-model", default=os.environ.get("OLLAMA_MODEL", "gemma3:4b"))
+    parser.add_argument("--openrouter-model", default=os.environ.get("OPENROUTER_MODEL", "z-ai/glm-4.5-air:free"))
     parser.add_argument("--kokoro-voice", default=os.environ.get("KOKORO_VOICE", "af_bella"))
     parser.add_argument("--openwebui-api-key", default=os.environ.get("OPENWEBUI_API_KEY"))
     parser.add_argument(
@@ -421,6 +466,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         lmstudio_completion_model=args.lmstudio_completion_model,
         lmstudio_embedding_model=args.lmstudio_embedding_model,
         ollama_model=args.ollama_model,
+        openrouter_model=args.openrouter_model,
         kokoro_voice=args.kokoro_voice,
         openwebui_api_key=args.openwebui_api_key,
         dashboard_api_key=args.dashboard_api_key or _env_dashboard_api_key(),

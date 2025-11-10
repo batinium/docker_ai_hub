@@ -22,6 +22,7 @@ The catalogue is defined in `app.py` as the `SERVICES` list; the UI renders it a
 | `kokoro-tts` | Kokoro | `POST /api/tts` | `http://AIHUB_IP:8080/kokoro/v1/audio/speech` | Text-to-Speech returning downloadable MP3 through the gateway. |
 | `faster-whisper-stt` | Faster Whisper REST | `POST /api/stt` | `http://AIHUB_IP:8080/stt/v1/audio/transcriptions` | Speech-to-text via multipart upload through the gateway. |
 | `openwebui-chat` | Open WebUI | `POST /api/openwebui/chat` | `http://AIHUB_IP:8080/openwebui/api/chat/completions` | Chat completions routed to Open WebUI via the gateway. |
+| `openrouter-chat` | OpenRouter | `POST /api/openrouter/chat` | `http://AIHUB_IP:8080/openrouter/v1/chat/completions` | Chat completions routed to the OpenRouter network using the server-side API key. |
 | `gateway-ollama-chat` | Ollama | `POST /api/gateway/ollama/chat` | `http://AIHUB_IP:8080/ollama/v1/chat/completions` | Ollama chat completions routed through the gateway relay. |
 
 Add new services by appending to the list; include metadata, form defaults, and `curl_example`. No template updates are required.
