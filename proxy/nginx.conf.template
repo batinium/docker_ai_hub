@@ -1,4 +1,6 @@
 env OPENROUTER_API_KEY;
+env lmstudio_host;
+env ollama_host;
 
 worker_processes  1;
 events { worker_connections 1024; }
@@ -12,6 +14,16 @@ http {
   map $http_x_forwarded_for $access_forwarded_for {
     default $http_x_forwarded_for;
     "" "-";
+  }
+
+  map "${LMSTUDIO_HOST}" $lmstudio_host {
+    default "${LMSTUDIO_HOST}";
+    "" "host.docker.internal";
+  }
+
+  map "${OLLAMA_HOST}" $ollama_host {
+    default "${OLLAMA_HOST}";
+    "" "host.docker.internal";
   }
 
   log_format monitoring escape=json
@@ -55,6 +67,9 @@ http {
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header Host aihub_dashboard;
+      proxy_connect_timeout 5s;
+      proxy_send_timeout 5s;
+      proxy_read_timeout 5s;
     }
 
     location @auth_error {
@@ -65,18 +80,23 @@ http {
     # Route to LM Studio
     location /lmstudio/ {
       auth_request /__auth;
-      proxy_pass http://host.docker.internal:1234/;
+      rewrite ^/lmstudio/(.*) /$1 break;
+      proxy_pass http://$lmstudio_host:1234;
       proxy_http_version 1.1;
       proxy_set_header Connection "";
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_connect_timeout 10s;
+      proxy_send_timeout 120s;
+      proxy_read_timeout 120s;
     }
 
     # Route to Ollama
     location /ollama/ {
       auth_request /__auth;
-      proxy_pass http://host.docker.internal:11434/;
+      rewrite ^/ollama/(.*) /$1 break;
+      proxy_pass http://$ollama_host:11434;
       proxy_http_version 1.1;
       proxy_set_header Connection "";
       proxy_set_header Host $host;
@@ -105,6 +125,9 @@ http {
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_connect_timeout 10s;
+      proxy_send_timeout 30s;
+      proxy_read_timeout 30s;
     }
 
     location /openrouter/ {

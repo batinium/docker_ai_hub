@@ -482,7 +482,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         response = exc.response
         status = response.status_code if response is not None else "?"
         detail = response.text[:500] if response is not None else str(exc)
-        print(f"HTTPError: status={status} detail={detail}")
+        
+        if status == 502:
+            print(f"HTTPError: status={status} (Bad Gateway)")
+            print("\nThis usually means one of the following:")
+            print("  1. The upstream service (e.g., LM Studio, Ollama) is not running")
+            print("  2. The service is not accessible from the gateway container")
+            print("  3. The service is running on a different port than expected")
+            print(f"\nOriginal error detail: {detail[:200]}")
+            print(f"\nTo fix:")
+            print(f"  - Ensure LM Studio is running on port {config.lmstudio_port}")
+            print(f"  - Check that services are accessible from the gateway")
+            print(f"  - Verify the host/IP configuration: {config.host}")
+        else:
+            print(f"HTTPError: status={status} detail={detail}")
         return 1
     except requests.RequestException as exc:
         print(f"Request failed: {exc}")
