@@ -137,7 +137,6 @@ class HubConfig:
     gateway_port: int = int(os.environ.get("GATEWAY_PORT", 8080))
     openwebui_port: int = int(os.environ.get("OPENWEBUI_PORT", 3000))
     kokoro_port: int = int(os.environ.get("KOKORO_PORT", 8880))
-    stt_port: int = int(os.environ.get("STT_REST_PORT", 10400))
     lmstudio_model: str = os.environ.get("LMSTUDIO_MODEL", "qwen/qwen3-1.7b")
     lmstudio_completion_model: Optional[str] = os.environ.get("LMSTUDIO_COMPLETION_MODEL")
     lmstudio_embedding_model: Optional[str] = os.environ.get(
@@ -432,7 +431,6 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--gateway-port", type=int, default=int(os.environ.get("GATEWAY_PORT", 8080)))
     parser.add_argument("--openwebui-port", type=int, default=int(os.environ.get("OPENWEBUI_PORT", 3000)))
     parser.add_argument("--kokoro-port", type=int, default=int(os.environ.get("KOKORO_PORT", 8880)))
-    parser.add_argument("--stt-port", type=int, default=int(os.environ.get("STT_REST_PORT", 10400)))
     parser.add_argument("--lmstudio-model", default=os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b"))
     parser.add_argument("--lmstudio-completion-model", default=os.environ.get("LMSTUDIO_COMPLETION_MODEL"))
     parser.add_argument(
@@ -461,7 +459,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         gateway_port=args.gateway_port,
         openwebui_port=args.openwebui_port,
         kokoro_port=args.kokoro_port,
-        stt_port=args.stt_port,
         lmstudio_model=args.lmstudio_model,
         lmstudio_completion_model=args.lmstudio_completion_model,
         lmstudio_embedding_model=args.lmstudio_embedding_model,
