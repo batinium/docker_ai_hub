@@ -36,3 +36,6 @@ proxy/logs/
 
 # Environment configuration
 .env
+
+# AI Assistant
+.claude/
