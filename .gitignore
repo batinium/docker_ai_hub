@@ -24,14 +24,8 @@ venv/
 *.sqlite3
 *.db
 
-# Dashboard runtime artifacts
-dashboard/static/tts_outputs/
-dashboard/__pycache__/
-dashboard/data/
-
 # Local data caches
 faster-whisper-data/
-openwebui-data/
 proxy/logs/
 
 # Environment configuration

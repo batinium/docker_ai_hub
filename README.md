@@ -1,280 +1,71 @@
-# AI Hub Workspace
+# AI Hub Gateway
 
-Modern LLM stacks rarely live in isolation. This repository packages the tooling used to operate the “AI Hub” gateway on a single machine, exposing local services like LM Studio, Ollama, Kokoro TTS, and Faster Whisper to teammates over a secure network. The dashboard, scripts, and proxy are designed to be publish-ready so you can share the project publicly without leaking private infrastructure. The setup plays nicely with tailnet-style connectivity (e.g., Tailscale) so you can keep everything private while still sharing APIs with trusted users.
-
----
+Minimal gateway for local AI services. This stack exposes LM Studio, Kokoro TTS, and Faster Whisper via a single nginx proxy, optionally relaying OpenRouter.
 
 ## Highlights
 
-- **Unified Gateway** – nginx fronts each upstream (`/lmstudio/`, `/ollama/`, `/kokoro/`, `/openwebui/`, `/stt/`), keeping private ports off the network.
-- **Agent-Friendly Dashboard** – FastAPI UI documents every service, provides live payload builders, and enforces optional API keys.
-- **Gateway Monitoring** – Built-in observability surfaces nginx access logs, highlights active API keys, and flags suspicious traffic.
-- **Reference Clients** – Python scripts under `dashboard/scripts/` exercise all endpoints, now automatically loading `.env` for consistent configuration.
-- **Audio Pipeline** – Kokoro TTS and Faster Whisper REST share the same OpenAI-compatible schema for easy swapping in agent workflows.
-- **Tailnet Friendly** – Works seamlessly behind Tailscale or a similar mesh VPN; dashboard defaults to the `LAN_IP`/`AIHUB_IP` advertised in `.env`.
-- **Docker First** – Containers orchestrate the full stack, while helper scripts run locally for development and automation.
+- **Single Gateway** – nginx fronts all services on one port.
+- **Tailscale-Friendly** – advertise your tailnet IP to remote agents.
+- **Optional Auth** – simple `X-API-Key` gate when `GATEWAY_API_KEY` is set.
+- **No UI** – no dashboard or custom frontend to maintain.
 
----
+## Services
 
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph Clients
-        A[Agents & CLI]:::client
-        B[Browser Dashboard]:::client
-        C[Tailscale Peers]:::client
-    end
-
-    subgraph Gateway
-        G[nginx proxy<br/>:8080]:::gateway
-    end
-
-    subgraph Services
-        S1[LM Studio<br/>/lmstudio/]:::service
-        S2[Ollama / Open WebUI<br/>/ollama/ & /openwebui/]:::service
-        S3[Kokoro TTS<br/>/kokoro/]:::service
-        S4[Faster Whisper REST<br/>/stt/]:::service
-    end
-
-    subgraph Dashboard
-        D[FastAPI UI<br/>:8090]:::dashboard
-    end
-
-    A -->|HTTP| G
-    B --> D
-    D -->|API Calls| G
-    G --> S1
-    G --> S2
-    G --> S3
-    G --> S4
-    C -->|HTTP| G
-
-    classDef client fill:#dbeafe,stroke:#1d4ed8,stroke-width:1px,color:#1e3a8a;
-    classDef gateway fill:#fef3c7,stroke:#d97706,stroke-width:1px,color:#92400e;
-    classDef service fill:#dcfce7,stroke:#15803d,stroke-width:1px,color:#14532d;
-    classDef dashboard fill:#fde68a,stroke:#c26d03,stroke-width:1px,color:#92400e;
-```
-
----
-
-## Repository Layout
-
-- `dashboard/` – FastAPI app, static assets, and reference scripts (`ai_agent_example.py`, `connectivity_check.py`).
-- `proxy/` – Lightweight nginx configuration that exposes the gateway.
-- `docker-compose.yml` – Spins up the dashboard, gateway, and audio services in one command.
-- `install/` – Virtualenv bootstrap scripts for server and client roles.
-- `requirements/` – Pinned dependency sets used by the installers.
-- `faster-whisper-data/`, `openwebui-data/`, … – Data directories populated on first run (kept out of Git).
-
----
+| Service | Gateway Path | Notes |
+| --- | --- | --- |
+| LM Studio | `/lmstudio/v1/...` | OpenAI-compatible models, chat, completions, embeddings |
+| Kokoro TTS | `/kokoro/v1/audio/speech` | MP3 output |
+| Faster Whisper STT | `/stt/v1/audio/transcriptions` | Multipart audio upload |
+| OpenRouter (optional) | `/openrouter/v1/...` | Requires `OPENROUTER_API_KEY` |
 
 ## Quick Start
 
-### Arch Linux / CachyOS Setup
+1) **Create `.env`:**
+```bash
+cp .env.example .env
+```
+Set:
+- `LAN_IP` / `AIHUB_IP` to your tailnet IP (example: `100.120.207.64`)
+- `LMSTUDIO_HOST` to the Windows host IP (example: `192.168.1.103`)
+- `GATEWAY_API_KEYS` if you want requests locked down (comma-separated)
 
-1. **Install Docker and Docker Compose:**
-   ```bash
-   sudo pacman -S docker docker-compose
-   sudo systemctl enable --now docker
-   sudo usermod -aG docker $USER
-   # Log out and back in for group membership to take effect
-   ```
+2) **Create data dirs:**
+```bash
+mkdir -p proxy/logs faster-whisper-data
+```
 
-2. **Clone and prepare `.env`:**
-   ```bash
-   git clone <repo-url> && cd docker_ai_hub
-   cp .env.example .env
-   ```
-   - Set `LAN_IP` to your machine's network IP address (auto-detected: `192.168.1.105`)
-   - Optionally define `DASHBOARD_API_KEYS` (comma-separated) to require an `X-API-Key`
-   - Populate any model defaults (`LMSTUDIO_MODEL`, `OLLAMA_MODEL`, `KOKORO_VOICE`, etc.)
+3) **Start services:**
+```bash
+docker compose up -d --build
+```
 
-3. **Create required directories:**
-   ```bash
-   mkdir -p dashboard/data proxy/logs faster-whisper-data openwebui-data
-   ```
+## Connectivity Check
 
-4. **Run the full stack with Docker:**
-   ```bash
-   docker compose up -d
-   docker ps --format 'table {{.Names}}\t{{.Status}}'
-   ```
-   The `proxy` container listens on port `8080`, and the dashboard lives on `8090`.
+```bash
+python scripts/connectivity_check.py --mode client --ip 100.120.207.64 --gateway-port 8080 --lmstudio-model "google/gemma-3-4b"
+```
 
-5. **Access the dashboard:**
-   Visit `http://<AIHUB_IP>:8090` (or use the `tailnet-ip` published in `.env`). Paste your dashboard API key into the header field if authentication is enabled.
+## Gateway Auth
 
-6. **Verify the gateway:**
-   ```bash
-   source .venv-client/bin/activate       # if using the client venv
-   python dashboard/scripts/connectivity_check.py
-   ```
-   The script now reads `.env` automatically. Use CLI flags (`--ip`, `--lmstudio-model`, etc.) to override defaults.
+If `GATEWAY_API_KEYS` is set, send `X-API-Key` on every request. Example:
+```bash
+curl http://100.120.207.64:8080/lmstudio/v1/models \
+  -H "X-API-Key: your-key"
+```
 
-### General Setup (macOS/Other Linux)
+## OpenRouter
 
-1. **Clone and prepare `.env`:**
-   ```bash
-   git clone <repo-url> && cd aihub
-   cp .env.example .env
-   ```
-   - Set `LAN_IP` (or overwrite with `AIHUB_IP`) to the machine's reachable address.
-   - Optionally define `DASHBOARD_API_KEYS` (comma-separated) to require an `X-API-Key`.
-   - Populate any model defaults (`LMSTUDIO_MODEL`, `OLLAMA_MODEL`, `KOKORO_VOICE`, etc.).
+Set `OPENROUTER_API_KEY` in `.env`, then call:
+```bash
+curl http://100.120.207.64:8080/openrouter/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openrouter/auto","messages":[{"role":"user","content":"Hello"}]}'
+```
+The gateway injects the real key server-side.
 
-2. **Run the full stack with Docker:**
-   ```bash
-   mkdir -p dashboard/data
-   docker compose up -d
-   docker ps --format 'table {{.Names}}\t{{.Status}}'
-   ```
-   The `proxy` container listens on port `8080`, and the dashboard lives on `8090`.
+## Layout
 
-3. **Access the dashboard:**
-   Visit `http://<AIHUB_IP>:8090` (or use the `tailnet-ip` published in `.env`). Paste your dashboard API key into the header field if authentication is enabled.
-
-4. **Verify the gateway:**
-   ```bash
-   source .venv-client/bin/activate       # if using the client venv
-   python dashboard/scripts/connectivity_check.py
-   ```
-   The script now reads `.env` automatically. Use CLI flags (`--ip`, `--lmstudio-model`, etc.) to override defaults.
-
----
-
-## Gateway Monitoring
-
-The dashboard now ships with a monitoring section that parses the nginx JSON access log exposed by the proxy container. Key capabilities:
-
-- **Live Activity Table** – See who connected (client IP + network scope), which API keys were used, and request latency.
-- **Aggregated Metrics** – Totals for requests, unique clients/API keys, status-family breakdowns, popular endpoints, and per-minute volume.
-- **Alert Heuristics** – Automatic warnings for repeated client errors, missing API keys, or sudden request bursts that may indicate an attack.
-- **SQLite Backing Store** – Every parsed log entry is persisted to `MONITORING_DB_PATH`, so metrics survive container restarts and you can run ad-hoc SQL queries.
-
-To enable the view, keep the default log mount from `docker-compose.yml` (`./proxy/logs:/var/log/nginx:ro`). The dashboard reads `/var/log/nginx/access.log` by default; override with `NGINX_ACCESS_LOG` if your logfile lives elsewhere. Tweaks such as `MONITORING_ALERT_WINDOW_MIN`, `MONITORING_RATE_THRESHOLD`, and `MONITORING_CLIENT_ERROR_THRESHOLD` allow you to tune detection without editing code.
-
-Because the monitoring view relies on the dashboard API key, make sure to paste the key into the “Dashboard API Key” field at the top of the UI. The summary auto-refreshes every minute and can be reloaded on demand via the “Refresh” button. If nginx is still emitting the legacy combined log format, the dashboard will ingest it as well (minus API-key visibility) and persist the entries to SQLite.
-
----
-
-## Remote Access Notes
-
-- **VPN / Tunnel** – The gateway is typically exposed via Tailscale. Set `LAN_IP` (or `AIHUB_IP`) to the machine’s tailnet address so remote peers can reach the services securely.
-- **Mobile Clients** – Open source apps like [Cogwheel Conduit](https://github.com/cogwheel0/conduit) can connect to the Open WebUI endpoint while you’re on the move, using the same gateway URL and API key.
-- **Development Focus** – The scripts and dashboard target remote endpoints so you can build and test applications against your own hosted models without moving them into production infrastructure.
-
----
-
-## Services at a Glance
-
-| Service ID            | Gateway Path                          | Notes                                                                    |
-|-----------------------|---------------------------------------|--------------------------------------------------------------------------|
-| `lmstudio-chat`       | `/lmstudio/v1/chat/completions`       | Chat-style completions using LM Studio’s OpenAI-compatible API.          |
-| `lmstudio-responses`  | `/lmstudio/v1/responses`              | “Responses” endpoint for flexible prompt execution.                      |
-| `lmstudio-completions`| `/lmstudio/v1/completions`            | Legacy text completions.                                                 |
-| `lmstudio-embeddings` | `/lmstudio/v1/embeddings`             | Vector embeddings for retrieval workflows.                               |
-| `openwebui-chat`      | `/openwebui/api/chat/completions`     | Delegates chat requests to Open WebUI (backed by Ollama).                |
-| `openrouter-chat`     | `/openrouter/v1/chat/completions`     | Relays chat prompts to OpenRouter using the gateway's stored API key.    |
-| `gateway-ollama-chat` | `/ollama/v1/chat/completions`         | Direct gateway relay to Ollama without WebUI tooling.                    |
-| `kokoro-tts`          | `/kokoro/v1/audio/speech`             | Text-to-speech; returns MP3 audio.                                       |
-| `faster-whisper-stt`  | `/stt/v1/audio/transcriptions`        | Speech-to-text via Faster Whisper REST.                                  |
-
-All requests accept `X-API-Key` when the dashboard is locked down. Additional provider parameters (temperature, tools, streaming, etc.) are passed straight through the gateway.
-
----
-
-## Scripts & Utilities
-
-- `dashboard/scripts/ai_agent_example.py`
-  - Demonstrates every major endpoint (models list, chat, responses, completions, embeddings, TTS, STT).
-  - Loads `.env` automatically; override runtime options with flags such as `--host`, `--lmstudio-model`, or `--dashboard-api-key`.
-  - Example usage:
-    ```bash
-    python dashboard/scripts/ai_agent_example.py --host 100.64.194.12 --dashboard-api-key <key>
-    ```
-
-- `dashboard/scripts/connectivity_check.py`
-  - Performs a full health sweep and reports HTTP status, latency, and result summaries.
-  - Accepts `--mode` (`server`, `client`, `all`), or let defaults read from `.env`.
-
-- `scripts/rebuild_services.sh`
-  - Simple wrapper around `docker compose build` + `docker compose up -d`.
-  - Pass service names (`proxy-gateway`, `aihub_dashboard`, etc.) to rebuild selectively.
-
----
-
-## Configuration Reference
-
-| Variable                 | Purpose                                                                                     |
-|--------------------------|---------------------------------------------------------------------------------------------|
-| `LAN_IP` / `AIHUB_IP`    | Host IP advertised to clients; defaults to `127.0.0.1`.                                     |
-| `GATEWAY_PORT`           | nginx gateway port (default `8080`).                                                        |
-| `NGINX_ACCESS_LOG`       | Absolute path to the JSON-formatted access log (default `/var/log/nginx/access.log`).      |
-| `MONITORING_MAX_SCAN`    | Maximum number of log lines scanned per refresh (default `10000`).                          |
-| `MONITORING_DEFAULT_LIMIT` | Default number of events returned by the monitoring API (default `200`).                |
-| `MONITORING_ALERT_WINDOW_MIN` | Minutes of history evaluated for automated alerts (default `60`).                     |
-| `MONITORING_RATE_THRESHOLD`   | Requests per client within the alert window that trigger a burst warning (default `120`).|
-| `MONITORING_CLIENT_ERROR_THRESHOLD` | Client error count within the alert window before a warning is raised (default `12`). |
-| `MONITORING_MISSING_KEY_THRESHOLD` | Number of missing API-key requests in the alert window before reporting (default `25`). |
-| `MONITORING_DB_PATH`     | SQLite destination for persisted access events (default `<dashboard>/data/monitoring.sqlite3`). |
-| `MONITORING_STATE_PATH`  | JSON file tracking ingestion offsets (default `<dashboard>/data/monitoring_state.json`).     |
-| `MONITORING_MAX_AGE_DAYS`| Automatic retention window for stored events; set to `0` to disable (default `30`).          |
-| `LMSTUDIO_MODEL`         | Default model for LM Studio chat/completion calls (`qwen3-06.b` by default).                |
-| `LMSTUDIO_EMBEDDING_MODEL`| Embedding model used by demos (`text-embedding-qwen3-embedding-0.6b`).                    |
-| `OLLAMA_MODEL`           | Default Ollama/Open WebUI model (`gemma3:4b`).                                              |
-| `KOKORO_VOICE`           | Default Kokoro voice (`af_bella`).                                                          |
-| `OPENWEBUI_API_KEY`      | Bearer token for Open WebUI when authentication is enabled.                                 |
-| `OPENROUTER_API_KEY`     | Bearer token forwarded to OpenRouter by the gateway.                                        |
-| `OPENROUTER_MODEL`       | Default OpenRouter model used by the dashboard demos (`openrouter/auto`).                   |
-| `DASHBOARD_API_KEYS`     | Comma-separated list of keys accepted by the dashboard and gateway (`X-API-Key` header).    |
-| `AGENT_TIMEOUT`          | Request timeout used by the agent example (seconds).                                        |
-
-Any value present in `.env` is now automatically injected into the helper scripts at runtime.
-
----
-
-## Platform-Specific Notes
-
-### Linux Compatibility
-
-This project has been adapted for Linux (tested on Arch Linux / CachyOS):
-
-- **Host Network Access**: The `proxy-gateway` container uses `extra_hosts` with `host.docker.internal:host-gateway` to enable access to services running on the host machine (LM Studio, Ollama, etc.). This replicates the macOS Docker Desktop behavior on Linux.
-- **User Permissions**: The `PUID` and `PGID` environment variables in `docker-compose.yml` are set to `1000` (default Linux user). Adjust if your user ID differs by checking `id -u` and `id -g`.
-- **File Paths**: All scripts now use relative paths based on the project directory rather than hardcoded absolute paths.
-- **Dashboard Workers**: The dashboard now runs with multiple uvicorn workers (`--workers 2`) to prevent request timeouts when handling concurrent auth requests through the nginx gateway.
-
-### macOS
-
-The project originally targeted macOS but maintains compatibility through the `host.docker.internal` DNS name provided by Docker Desktop.
-
-## Troubleshooting
-
-- **401 from Open WebUI** – Set `OPENWEBUI_API_KEY` in `.env` or pass `--openwebui-api-key`. The gateway relays headers transparently.
-- **Monitoring view empty** – Confirm the dashboard container mounts the nginx log directory read-only (`./proxy/logs:/var/log/nginx`) and restart the proxy after updating `proxy/nginx.conf` so the JSON format is active. The dashboard will fall back to parsing the combined log format if necessary (without API-key metadata).
-- **Embeddings 404** – Ensure the embedding-capable model is actually "served" inside LM Studio. Re-download if loading was interrupted.
-- **Audio uploads rejected** – FastAPI endpoints allow up to `200 MB` for STT and `50 MB` for TTS through nginx; adjust `proxy/nginx.conf` if needed.
-- **Gateway requests timeout (HTTP 499)** – The dashboard container now runs with multiple uvicorn workers to handle concurrent authentication requests. If timeouts persist, check nginx access logs for errors and verify the dashboard is healthy with `docker logs aihub_dashboard`.
-- **Gateway reachable but empty responses** – Run `python dashboard/scripts/connectivity_check.py --mode all` to confirm each upstream is healthy, then inspect container logs (`docker compose logs -f <service>`).
-- **Missing env values in scripts** – `ai_agent_example.py` and `connectivity_check.py` now load `.env` automatically, but they preserve existing environment variables; export overrides before running if you need different settings for a single session.
-- **Docker permission denied** (Linux) – Ensure your user is in the `docker` group: `sudo usermod -aG docker $USER`, then log out and back in.
-
----
-
-## Contributing
-
-1. Fork the repository and create a feature branch.
-2. Keep configuration declarative—extend `SERVICES` in `dashboard/app.py` and update `dashboard/AGENTS.md` when new endpoints join the catalog.
-3. Run the connectivity check and agent example to validate changes before opening a pull request.
-4. Avoid committing secrets: redact API keys, IPs, and generated logs before publishing.
-
----
-
-## License
-
-This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
-
-## Roadmap
--  Add api_verification to monitoring so only admin can see.
--  IP filtering to montoring.
+- `proxy/` – nginx gateway template
+- `faster_whisper_rest/` – REST wrapper for Faster Whisper
+- `scripts/` – connectivity check utilities
+- `AGENTS.md` – agent-facing endpoint guide
