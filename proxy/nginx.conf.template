@@ -17,6 +17,26 @@ http {
     "" "-";
   }
 
+  map "${GATEWAY_API_KEYS}" $gateway_key_1 {
+    default "";
+    "~^\\s*([^,]+)" $1;
+  }
+
+  map "${GATEWAY_API_KEYS}" $gateway_key_2 {
+    default "";
+    "~^[^,]+,\\s*([^,]+)" $1;
+  }
+
+  map "${GATEWAY_API_KEYS}" $gateway_key_3 {
+    default "";
+    "~^[^,]+,\\s*[^,]+,\\s*([^,]+)" $1;
+  }
+
+  map "${GATEWAY_API_KEYS}" $gateway_key_4 {
+    default "";
+    "~^[^,]+,\\s*[^,]+,\\s*[^,]+,\\s*([^,]+)" $1;
+  }
+
   map "${LMSTUDIO_HOST}" $lmstudio_host {
     default "${LMSTUDIO_HOST}";
     "" "host.docker.internal";
@@ -55,6 +75,25 @@ http {
 
     # Route to LM Studio
     location /lmstudio/ {
+      set $auth_ok 0;
+      if ($gateway_key_1 = "") {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_1) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_2) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_3) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_4) {
+        set $auth_ok 1;
+      }
+      if ($auth_ok = 0) {
+        return 401;
+      }
       rewrite ^/lmstudio/(.*) /$1 break;
       proxy_pass http://$lmstudio_host:1234;
       proxy_http_version 1.1;
@@ -67,20 +106,26 @@ http {
       proxy_read_timeout 120s;
     }
 
-    # API key gate (enabled when GATEWAY_API_KEYS is set)
-    set $gateway_keys ",${GATEWAY_API_KEYS},";
-    set $auth_ok 0;
-    if ($gateway_keys = ",,") {
-      set $auth_ok 1;
-    }
-    if ($gateway_keys ~* ",$http_x_api_key,") {
-      set $auth_ok 1;
-    }
-    if ($auth_ok = 0) {
-      return 401;
-    }
-
     location /kokoro/ {
+      set $auth_ok 0;
+      if ($gateway_key_1 = "") {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_1) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_2) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_3) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_4) {
+        set $auth_ok 1;
+      }
+      if ($auth_ok = 0) {
+        return 401;
+      }
       proxy_pass http://host.docker.internal:8880/;
       proxy_http_version 1.1;
       proxy_set_header Connection "";
@@ -92,6 +137,25 @@ http {
 
     # OpenRouter - requires internet connection
     location /openrouter/ {
+      set $auth_ok 0;
+      if ($gateway_key_1 = "") {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_1) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_2) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_3) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_4) {
+        set $auth_ok 1;
+      }
+      if ($auth_ok = 0) {
+        return 401;
+      }
       set $openrouter_backend "openrouter.ai";
       proxy_pass https://$openrouter_backend/api/;
       proxy_http_version 1.1;
@@ -106,6 +170,25 @@ http {
     }
 
     location /stt/ {
+      set $auth_ok 0;
+      if ($gateway_key_1 = "") {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_1) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_2) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_3) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_4) {
+        set $auth_ok 1;
+      }
+      if ($auth_ok = 0) {
+        return 401;
+      }
       proxy_pass http://host.docker.internal:10400/;
       proxy_http_version 1.1;
       proxy_set_header Connection "";
