@@ -15,7 +15,9 @@ services:
       - GATEWAY_API_KEYS=${GATEWAY_API_KEYS}
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
       - LMSTUDIO_HOST=${LMSTUDIO_HOST:-${LAN_IP:-host.docker.internal}}
+      - NGINX_ENVSUBST_FILTER=OPENROUTER_API_KEY|GATEWAY_API_KEYS|LMSTUDIO_HOST
     restart: unless-stopped
+
 
 
   faster-whisper:
