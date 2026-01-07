@@ -156,8 +156,7 @@ http {
       if ($auth_ok = 0) {
         return 401;
       }
-      set $openrouter_backend "openrouter.ai";
-      proxy_pass https://$openrouter_backend/api/;
+      proxy_pass https://openrouter.ai/api/;
       proxy_http_version 1.1;
       proxy_ssl_server_name on;
       proxy_set_header Host openrouter.ai;

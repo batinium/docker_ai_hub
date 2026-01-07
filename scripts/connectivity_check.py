@@ -241,7 +241,8 @@ def openrouter_chat(session: requests.Session, ctx: TestContext) -> TestResult:
     except Exception as exc:
         elapsed = time.perf_counter() - start
         status = getattr(getattr(exc, "response", None), "status_code", None)
-        return TestResult("Gateway → OpenRouter chat", False, status, str(exc), elapsed)
+        body = getattr(getattr(exc, "response", None), "text", "")[:200]
+        return TestResult("Gateway → OpenRouter chat", False, status, f"{str(exc)} | Body: {body}", elapsed)
 
 
 def openrouter_models(session: requests.Session, ctx: TestContext) -> TestResult:
@@ -289,7 +290,7 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
                         help="Per-request timeout in seconds.")
     parser.add_argument("--lmstudio-model", default=os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b"),
                         help="Model ID to use for LM Studio chat tests.")
-    parser.add_argument("--openrouter-model", default=os.environ.get("OPENROUTER_MODEL", "z-ai/glm-4.5-air:free"),
+    parser.add_argument("--openrouter-model", default=os.environ.get("OPENROUTER_MODEL", "mistralai/devstral-2512:free"),
                         help="Model ID to use for OpenRouter chat tests.")
     parser.add_argument("--kokoro-voice", default=os.environ.get("KOKORO_VOICE", "af_bella"),
                         help="Voice preset to use for Kokoro speech tests.")
