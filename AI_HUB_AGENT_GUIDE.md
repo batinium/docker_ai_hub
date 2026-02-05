@@ -28,29 +28,30 @@ All routes below are accessed via the gateway base URL.
 ## LLM (LM Studio, OpenAI-compatible)
 
 - Models: `GET /lmstudio/v1/models`
-- Chat: `POST /lmstudio/v1/chat/completions`
 - Responses: `POST /lmstudio/v1/responses`
+- Chat: `POST /lmstudio/v1/chat/completions`
 - Completions: `POST /lmstudio/v1/completions`
 - Embeddings: `POST /lmstudio/v1/embeddings`
 
 Notes:
 - `model` must match an ID from `GET /lmstudio/v1/models`.
+- `/v1/responses` is supported on your LM Studio build (validated on the host).
 - Typical errors: `401` (missing/invalid API key), `502` (LM Studio not running or unreachable).
 
-Example:
-```bash
-curl http://100.120.207.64:8080/lmstudio/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: <your-key>" \
-  -d '{"model":"google/gemma-3-4b","messages":[{"role":"user","content":"Hello"}]}'
-```
-
-Responses example:
+Example (preferred, `responses`):
 ```bash
 curl http://100.120.207.64:8080/lmstudio/v1/responses \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <your-key>" \
-  -d '{"model":"google/gemma-3-4b","input":"Summarize this in one sentence."}'
+  -d '{"model":"google/gemma-3-4b","input":"Hello"}'
+```
+
+Chat example:
+```bash
+curl http://100.120.207.64:8080/lmstudio/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{"model":"google/gemma-3-4b","messages":[{"role":"user","content":"Summarize this in one sentence."}]}'
 ```
 
 Completions example:
@@ -135,8 +136,8 @@ Use this snippet to configure LLM agents or external apps:
 Base URL: http://100.120.207.64:8080
 Auth header: X-API-Key: <your-key>
 Endpoints:
-  - Chat: /lmstudio/v1/chat/completions
   - Responses: /lmstudio/v1/responses
+  - Chat: /lmstudio/v1/chat/completions
   - Completions: /lmstudio/v1/completions
   - Embeddings: /lmstudio/v1/embeddings
   - TTS: /kokoro/v1/audio/speech

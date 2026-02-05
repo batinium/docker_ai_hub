@@ -13,7 +13,7 @@ Minimal gateway for local AI services. This stack exposes LM Studio, Kokoro TTS,
 
 | Service | Gateway Path | Notes |
 | --- | --- | --- |
-| LM Studio | `/lmstudio/v1/...` | OpenAI-compatible models, chat, completions, embeddings |
+| LM Studio | `/lmstudio/v1/...` | OpenAI-compatible models, responses, chat, completions, embeddings |
 | Kokoro TTS | `/kokoro/v1/audio/speech` | MP3 output |
 | Faster Whisper STT | `/stt/v1/audio/transcriptions` | Multipart audio upload |
 | OpenRouter (optional) | `/openrouter/v1/...` | Requires `OPENROUTER_API_KEY` |

@@ -119,6 +119,13 @@ def _json_chat_payload(model: str, message: str = "Hello from connectivity check
     }
 
 
+def _json_responses_payload(model: str, message: str = "Hello from connectivity check!") -> dict:
+    return {
+        "model": model,
+        "input": message,
+    }
+
+
 def _generate_silence_wav(duration_seconds: float = 0.2, sample_rate: int = 16000) -> io.BytesIO:
     """Create an in-memory WAV file with silence."""
     frame_count = int(duration_seconds * sample_rate)
@@ -132,24 +139,24 @@ def _generate_silence_wav(duration_seconds: float = 0.2, sample_rate: int = 1600
     return buffer
 
 
-def lmstudio_chat(session: requests.Session, ctx: TestContext) -> TestResult:
+def lmstudio_responses(session: requests.Session, ctx: TestContext) -> TestResult:
     if not ctx.lmstudio_model:
-        return TestResult("Gateway → LM Studio chat", True, None, "Skipped (no LM Studio model provided)", 0.0)
-    url = f"http://{ctx.ip}:{ctx.gateway_port}/lmstudio/v1/chat/completions"
-    payload = _json_chat_payload(ctx.lmstudio_model)
+        return TestResult("Gateway → LM Studio responses", True, None, "Skipped (no LM Studio model provided)", 0.0)
+    url = f"http://{ctx.ip}:{ctx.gateway_port}/lmstudio/v1/responses"
+    payload = _json_responses_payload(ctx.lmstudio_model)
     start = time.perf_counter()
     try:
         resp = session.post(url, json=payload, headers=_headers(ctx.gateway_api_key), timeout=ctx.timeout)
         elapsed = time.perf_counter() - start
         resp.raise_for_status()
         data = resp.json()
-        ok = bool(data.get("choices"))
-        detail = "Received choices" if ok else "Empty response"
-        return TestResult("Gateway → LM Studio chat", ok, resp.status_code, detail, elapsed)
+        ok = data.get("object") == "response"
+        detail = "Received response object" if ok else "Unexpected response format"
+        return TestResult("Gateway → LM Studio responses", ok, resp.status_code, detail, elapsed)
     except Exception as exc:
         elapsed = time.perf_counter() - start
         status = getattr(getattr(exc, "response", None), "status_code", None)
-        return TestResult("Gateway → LM Studio chat", False, status, str(exc), elapsed)
+        return TestResult("Gateway → LM Studio responses", False, status, str(exc), elapsed)
 
 
 def lmstudio_models(session: requests.Session, ctx: TestContext) -> TestResult:
@@ -266,7 +273,7 @@ def openrouter_models(session: requests.Session, ctx: TestContext) -> TestResult
 
 GATEWAY_TESTS: Iterable[TestFunc] = (
     lmstudio_models,
-    lmstudio_chat,
+    lmstudio_responses,
     openrouter_models,
     openrouter_chat,
     kokoro_tts,
@@ -289,7 +296,7 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=int(os.environ.get("CONNECTIVITY_TIMEOUT", DEFAULT_TIMEOUT)),
                         help="Per-request timeout in seconds.")
     parser.add_argument("--lmstudio-model", default=os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b"),
-                        help="Model ID to use for LM Studio chat tests.")
+                        help="Model ID to use for LM Studio responses tests.")
     parser.add_argument("--openrouter-model", default=os.environ.get("OPENROUTER_MODEL", "mistralai/devstral-2512:free"),
                         help="Model ID to use for OpenRouter chat tests.")
     parser.add_argument("--kokoro-voice", default=os.environ.get("KOKORO_VOICE", "af_bella"),

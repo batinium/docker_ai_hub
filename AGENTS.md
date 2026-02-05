@@ -14,17 +14,17 @@ If `GATEWAY_API_KEYS` is set in `.env`, include `X-API-Key` with every request.
 ## LM Studio (OpenAI-compatible)
 
 - Models: `GET /lmstudio/v1/models`
-- Chat: `POST /lmstudio/v1/chat/completions`
 - Responses: `POST /lmstudio/v1/responses`
+- Chat: `POST /lmstudio/v1/chat/completions`
 - Completions: `POST /lmstudio/v1/completions`
 - Embeddings: `POST /lmstudio/v1/embeddings`
 
 Example:
 ```bash
-curl http://100.120.207.64:8080/lmstudio/v1/chat/completions \
+curl http://100.120.207.64:8080/lmstudio/v1/responses \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <your-key>" \
-  -d '{"model":"google/gemma-3-4b","messages":[{"role":"user","content":"Hello"}]}'
+  -d '{"model":"google/gemma-3-4b","input":"Hello"}'
 ```
 
 ## Kokoro TTS
