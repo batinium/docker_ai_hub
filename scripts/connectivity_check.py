@@ -159,6 +159,26 @@ def lmstudio_responses(session: requests.Session, ctx: TestContext) -> TestResul
         return TestResult("Gateway → LM Studio responses", False, status, str(exc), elapsed)
 
 
+def lmstudio_chat(session: requests.Session, ctx: TestContext) -> TestResult:
+    if not ctx.lmstudio_model:
+        return TestResult("Gateway → LM Studio chat", True, None, "Skipped (no LM Studio model provided)", 0.0)
+    url = f"http://{ctx.ip}:{ctx.gateway_port}/lmstudio/v1/chat/completions"
+    payload = _json_chat_payload(ctx.lmstudio_model)
+    start = time.perf_counter()
+    try:
+        resp = session.post(url, json=payload, headers=_headers(ctx.gateway_api_key), timeout=ctx.timeout)
+        elapsed = time.perf_counter() - start
+        resp.raise_for_status()
+        data = resp.json()
+        ok = bool(data.get("choices"))
+        detail = "Received choices" if ok else "Empty response"
+        return TestResult("Gateway → LM Studio chat", ok, resp.status_code, detail, elapsed)
+    except Exception as exc:
+        elapsed = time.perf_counter() - start
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return TestResult("Gateway → LM Studio chat", False, status, str(exc), elapsed)
+
+
 def lmstudio_models(session: requests.Session, ctx: TestContext) -> TestResult:
     url = f"http://{ctx.ip}:{ctx.gateway_port}/lmstudio/v1/models"
     start = time.perf_counter()
@@ -274,6 +294,7 @@ def openrouter_models(session: requests.Session, ctx: TestContext) -> TestResult
 GATEWAY_TESTS: Iterable[TestFunc] = (
     lmstudio_models,
     lmstudio_responses,
+    lmstudio_chat,
     openrouter_models,
     openrouter_chat,
     kokoro_tts,
