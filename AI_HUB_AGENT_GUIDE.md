@@ -4,8 +4,10 @@ Use this file when integrating external apps or agents with the AI Hub gateway.
 
 ## Base URLs
 
-- Tailscale: `http://100.120.207.64:8080`
-- LAN: `http://192.168.1.103:8080`
+- Tailscale (recommended, stable): `http://100.120.207.64:8080`
+- LAN (dynamic, may change): `http://<LAN-IP>:8080`
+
+Note: Your LAN IP can change (DHCP). For stable access from other devices, prefer the Tailscale URL above.
 
 ## Auth
 
