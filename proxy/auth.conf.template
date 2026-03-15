@@ -1,0 +1,19 @@
+      set $auth_ok 0;
+      if ($gateway_key_1 = "") {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_1) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_2) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_3) {
+        set $auth_ok 1;
+      }
+      if ($http_x_api_key = $gateway_key_4) {
+        set $auth_ok 1;
+      }
+      if ($auth_ok = 0) {
+        return 401;
+      }

@@ -61,6 +61,13 @@ http {
       "\"upstream_response_time\":\"$upstream_response_time\""
     "}";
 
+  # Text-to-Speech Output Cache
+  proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=tts_cache:10m max_size=1g inactive=60m use_temp_path=off;
+
+  # Concurrency & Rate Limiting (Protects host CPU)
+  limit_req_zone $access_api_key zone=api_limit:10m rate=20r/m;
+  limit_conn_zone $access_api_key zone=conn_limit:10m;
+
   access_log /var/log/nginx/access.log monitoring;
 
   server {
@@ -75,25 +82,7 @@ http {
 
     # Route to LM Studio
     location /lmstudio/ {
-      set $auth_ok 0;
-      if ($gateway_key_1 = "") {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_1) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_2) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_3) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_4) {
-        set $auth_ok 1;
-      }
-      if ($auth_ok = 0) {
-        return 401;
-      }
+      include /etc/nginx/templates/auth.conf.template;
       rewrite ^/lmstudio/(.*) /$1 break;
       proxy_pass http://$lmstudio_host:1234;
       proxy_http_version 1.1;
@@ -107,55 +96,30 @@ http {
     }
 
     location /kokoro/ {
-      set $auth_ok 0;
-      if ($gateway_key_1 = "") {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_1) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_2) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_3) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_4) {
-        set $auth_ok 1;
-      }
-      if ($auth_ok = 0) {
-        return 401;
-      }
-      proxy_pass http://host.docker.internal:8880/;
+      include /etc/nginx/templates/auth.conf.template;
+      limit_req zone=api_limit burst=10 nodelay;
+      limit_conn conn_limit 5;
+      proxy_pass http://kokoro:8880/;
       proxy_http_version 1.1;
       proxy_set_header Connection "";
       proxy_set_header Host $host;
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       client_max_body_size 50m;
+
+      # Enable Audio Caching based on the exact payload JSON body
+      proxy_cache tts_cache;
+      proxy_cache_methods POST;
+      proxy_cache_key "$request_uri|$request_body";
+      proxy_cache_valid 200 1h;
+      proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+      add_header X-Cache-Status $upstream_cache_status;
     }
 
     # OpenRouter - requires internet connection
     location /openrouter/ {
-      set $auth_ok 0;
-      if ($gateway_key_1 = "") {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_1) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_2) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_3) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_4) {
-        set $auth_ok 1;
-      }
-      if ($auth_ok = 0) {
-        return 401;
-      }
+      include /etc/nginx/templates/auth.conf.template;
+      limit_req zone=api_limit burst=10 nodelay;
       proxy_pass https://openrouter.ai/api/;
       proxy_http_version 1.1;
       proxy_ssl_server_name on;
@@ -172,26 +136,10 @@ http {
     }
 
     location /stt/ {
-      set $auth_ok 0;
-      if ($gateway_key_1 = "") {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_1) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_2) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_3) {
-        set $auth_ok 1;
-      }
-      if ($http_x_api_key = $gateway_key_4) {
-        set $auth_ok 1;
-      }
-      if ($auth_ok = 0) {
-        return 401;
-      }
-      proxy_pass http://host.docker.internal:10400/;
+      include /etc/nginx/templates/auth.conf.template;
+      limit_req zone=api_limit burst=5 nodelay;
+      limit_conn conn_limit 2;
+      proxy_pass http://faster_whisper_rest:8000/;
       proxy_http_version 1.1;
       proxy_set_header Connection "";
       proxy_set_header Host $host;

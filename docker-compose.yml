@@ -28,29 +28,37 @@ services:
       - WHISPER_BEAM=1
     volumes:
       - ./faster-whisper-data:/config
-    ports:
-      - "10300:10300"
     restart: unless-stopped
 
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest # or kokoro-fastapi-gpu for CUDA
+    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest # or kokoro-fastapi-gpu for CUDA
     container_name: kokoro
     environment:
       - TZ=Europe/Istanbul
-    ports:
-      - "8880:8880"
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   faster_whisper_rest:
     build: ./faster_whisper_rest
     image: aihub/faster-whisper-rest:latest
     container_name: faster_whisper_rest
-    ports:
-      - "10400:8000"
     volumes:
       - ./faster-whisper-data:/config # if you want to reuse the model cache/config
     environment:
       - WHISPER_MODEL=small
-      - DEVICE=cpu
-      - COMPUTE_TYPE=int8
+      - DEVICE=cuda
+      - COMPUTE_TYPE=float16
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
