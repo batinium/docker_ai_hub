@@ -76,6 +76,9 @@ curl http://100.120.207.64:8080/lmstudio/v1/embeddings \
 
 Notes:
 - Returns audio bytes (e.g., MP3). Use `--output` to save.
+- **Hardware Info:** Runs on a dedicated NVIDIA RTX 5090 proxy with `<1s` generation times.
+- **Caching Feature:** The proxy implements a 1-hour cache based on exact JSON payloads. If you generate the exact same text/voice configuration, Nginx returns the stored MP3 in milliseconds without touching the GPU.
+- **Rate Limit:** 20 requests/minute, bursting up to 10.
 - Common voices include `af_bella`, `af_heart` (list depends on installed packs).
 
 Example:
@@ -93,6 +96,8 @@ curl http://100.120.207.64:8080/kokoro/v1/audio/speech \
 
 Notes:
 - Use multipart upload with `file=@...`.
+- **Hardware Info:** Uses a heavily accelerated multilingual model on GPU (cuda/float16).
+- **Rate Limit:** 5 requests/minute, max 2 concurrent connections.
 - You can optionally force a specific language via `-F "language=tr"` or `-F "language=en"`. This is highly recommended to improve transcription accuracy and speed.
 - Returns JSON with a `text` field.
 
@@ -121,14 +126,11 @@ curl http://100.120.207.64:8080/openrouter/v1/chat/completions \
   -d '{"model":"openrouter/auto","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-## Direct (Non-Gateway) Access (Debug Only)
+## Direct (Non-Gateway) Access (Security Note)
 
-These are local service ports on the host. Prefer gateway access for clients.
+**Important:** For security reasons, direct host port exposure (e.g., `8880`, `10400`) for the backend containers has been **closed**. All traffic MUST pass through the Tailscale IP on port `8080` (the Nginx gateway), ensuring that all requests successfully authenticate via the custom `.env` `X-API-Key` before connecting to the GPU containers.
 
-- LM Studio (local app): `http://<HOST-IP>:1234/v1/...`
-- Kokoro: `http://<HOST-IP>:8880`
-- Faster Whisper REST: `http://<HOST-IP>:10400`
-- Faster Whisper (LSIO image): `http://<HOST-IP>:10300`
+- LM Studio (local Windows app): `http://<HOST-IP>:1234/v1/...`
 
 ## LLM Client Quick Start (Prompt Snippet)
 

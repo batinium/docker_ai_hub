@@ -48,7 +48,8 @@ Example:
 ```bash
 curl http://100.120.207.64:8080/stt/v1/audio/transcriptions \
   -H "X-API-Key: <your-key>" \
-  -F "file=@sample.wav"
+  -F "file=@sample.wav" \
+  -F "language=tr"
 ```
 
 ## OpenRouter (optional)

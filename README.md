@@ -6,6 +6,9 @@ Minimal gateway for local AI services. This stack exposes LM Studio, Kokoro TTS,
 
 - **Single Gateway** – nginx fronts all services on one port.
 - **Tailscale-Friendly** – advertise your tailnet IP to remote agents.
+- **GPU Accelerated** – uses NVIDIA GPU reservations for blazingly fast Kokoro TTS and Faster Whisper STT responses.
+- **TTS Caching** – exact POST match JSON bodies skip generation and return cached MP3 instantly.
+- **Rate-Limited Resiliency** – proxy connections limit excessive endpoint abuse to protect host hardware.
 - **Optional Auth** – simple `X-API-Key` gate when `GATEWAY_API_KEY` is set.
 - **No UI** – no dashboard or custom frontend to maintain.
 
