@@ -93,13 +93,15 @@ curl http://100.120.207.64:8080/kokoro/v1/audio/speech \
 
 Notes:
 - Use multipart upload with `file=@...`.
+- You can optionally force a specific language via `-F "language=tr"` or `-F "language=en"`. This is highly recommended to improve transcription accuracy and speed.
 - Returns JSON with a `text` field.
 
 Example:
 ```bash
 curl http://100.120.207.64:8080/stt/v1/audio/transcriptions \
   -H "X-API-Key: <your-key>" \
-  -F "file=@sample.wav"
+  -F "file=@sample.wav" \
+  -F "language=tr"
 ```
 
 ## OpenRouter (Optional)
