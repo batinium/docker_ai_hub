@@ -1,15 +1,14 @@
 services:
-
   proxy-gateway:
     image: nginx:stable-alpine
     container_name: ai_proxy_gateway
     ports:
-      - "8080:80"             # Port visible via Tailscale
+      - "8080:80" # Port visible via Tailscale
     volumes:
-      - ./proxy/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro   # Mount template for envsubst
-      - ./proxy/logs:/var/log/nginx                   # Mount log directory
+      - ./proxy/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro # Mount template for envsubst
+      - ./proxy/logs:/var/log/nginx # Mount log directory
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # Linux compatibility for host access
+      - "host.docker.internal:host-gateway" # Linux compatibility for host access
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - GATEWAY_API_KEYS=${GATEWAY_API_KEYS}
@@ -18,17 +17,14 @@ services:
       - NGINX_ENVSUBST_FILTER=OPENROUTER_API_KEY|GATEWAY_API_KEYS|LMSTUDIO_HOST
     restart: unless-stopped
 
-
-
   faster-whisper:
-    image: lscr.io/linuxserver/faster-whisper:latest   
-    container_name: faster-whisper                             # remove if not using NVIDIA GPU
+    image: lscr.io/linuxserver/faster-whisper:latest
+    container_name: faster-whisper # remove if not using NVIDIA GPU
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Europe/Istanbul
       - WHISPER_MODEL=base-int8
-      - WHISPER_LANG=en
       - WHISPER_BEAM=1
     volumes:
       - ./faster-whisper-data:/config
@@ -37,7 +33,7 @@ services:
     restart: unless-stopped
 
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest  # or kokoro-fastapi-gpu for CUDA
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest # or kokoro-fastapi-gpu for CUDA
     container_name: kokoro
     environment:
       - TZ=Europe/Istanbul
@@ -52,10 +48,9 @@ services:
     ports:
       - "10400:8000"
     volumes:
-      - ./faster-whisper-data:/config   # if you want to reuse the model cache/config
+      - ./faster-whisper-data:/config # if you want to reuse the model cache/config
     environment:
-      - WHISPER_MODEL=small.en
+      - WHISPER_MODEL=small
       - DEVICE=cpu
       - COMPUTE_TYPE=int8
     restart: unless-stopped
-  
