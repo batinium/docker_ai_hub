@@ -6,6 +6,7 @@ services:
       - "8080:80" # Port visible via Tailscale
     volumes:
       - ./proxy/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro # Mount template for envsubst
+      - ./proxy/auth.conf.template:/etc/nginx/templates/auth.conf.template:ro # Included by nginx.conf.template
       - ./proxy/logs:/var/log/nginx # Mount log directory
     extra_hosts:
       - "host.docker.internal:host-gateway" # Linux compatibility for host access
