@@ -70,6 +70,63 @@ curl http://100.120.207.64:8080/lmstudio/v1/embeddings \
   -d '{"model":"text-embedding-nomic-embed-text-v1.5","input":"hello world"}'
 ```
 
+Structured Output (JSON Schema) example:
+*(Supported natively by LM Studio via standard OpenAI API format)*
+
+```bash
+curl http://100.120.207.64:8080/lmstudio/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{
+    "model": "qwen2.5-3b-instruct",
+    "messages": [{"role": "user", "content": "Extract details: Name is Alice, age is 25."}],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "user_details",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string"},
+            "age": {"type": "integer"}
+          },
+          "required": ["name", "age"]
+        }
+      }
+    }
+  }'
+```
+
+Tool Calling example:
+*(Supported natively by LM Studio via standard OpenAI API format)*
+
+```bash
+curl http://100.120.207.64:8080/lmstudio/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{
+    "model": "qwen2.5-3b-instruct",
+    "messages": [{"role": "user", "content": "What is the weather in Paris?"}],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get current weather in a given location",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": { "type": "string", "description": "The city name" }
+            },
+            "required": ["location"]
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto"
+  }'
+```
+
 ## TTS (Kokoro)
 
 - Speech: `POST /kokoro/v1/audio/speech`
