@@ -32,18 +32,11 @@ services:
     restart: unless-stopped
 
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest # or kokoro-fastapi-gpu for CUDA
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
     container_name: kokoro
     environment:
       - TZ=Europe/Istanbul
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   faster_whisper_rest:
     build: ./faster_whisper_rest
