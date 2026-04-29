@@ -7,9 +7,10 @@ and example payloads quickly.
 ## Base URLs
 
 - Tailscale (recommended, stable): `http://100.120.207.64:8080`
-- LAN (dynamic, may change): `http://<LAN-IP>:8080`
+- LAN (if routed on the local network): `http://192.168.1.103:8080`
 
-Note: Your LAN IP can change (DHCP). For stable access from other devices, prefer the Tailscale URL above.
+Use the Tailscale URL for remote agents and long-lived client configs. The LAN
+address can change with DHCP and should be treated as local-network only.
 
 ## Auth
 
@@ -20,11 +21,60 @@ Missing/invalid key returns `401` with JSON: `{"error":"Invalid or missing API k
 
 All routes below are accessed via the gateway base URL.
 
-- LM Studio (OpenAI-compatible): `/lmstudio/v1/...`
-- llama.cpp (OpenAI-compatible): `/llama/v1/...`
+- llama.cpp (Docker, OpenAI-compatible): `/llama/v1/...`
+- LM Studio (host app, OpenAI-compatible): `/lmstudio/v1/...`
 - Kokoro TTS: `/kokoro/v1/audio/speech`
 - Faster Whisper STT: `/stt/v1/audio/transcriptions`
 - OpenRouter (optional): `/openrouter/v1/...`
+
+## Current LLM Defaults
+
+Use llama.cpp for the Docker-hosted local LLM path.
+
+- Base route: `/llama/v1/...`
+- Deployed request model: `qwen2.5-7b-instruct`
+- Backing file: `/models/lmstudio-community/Qwen2.5-7B-Instruct-GGUF/Qwen2.5-7B-Instruct-Q4_K_M.gguf`
+- Container: `llama_cpp`
+- Direct host port: none; access it only through the gateway.
+
+LM Studio remains available as a gateway route, but it depends on the separate
+host LM Studio app being open and reachable from Docker at `LMSTUDIO_HOST`.
+
+## LLM (llama.cpp, OpenAI-compatible)
+
+- Models: `GET /llama/v1/models`
+- Chat: `POST /llama/v1/chat/completions`
+- Completions: `POST /llama/v1/completions`
+- Embeddings: `POST /llama/v1/embeddings`
+
+Notes:
+- This is the preferred local LLM endpoint for Docker-only operation.
+- The generic default alias in compose is `local-gguf`, but this deployment uses `qwen2.5-7b-instruct`.
+- `LLAMA_CPP_MODELS_DIR` mounts the host model root into the container as `/models`.
+- `LLAMA_CPP_N_GPU_LAYERS=999` asks llama.cpp to offload all possible layers to GPU.
+- Typical errors: `401` (missing/invalid API key), `502` (container not running, model path wrong, or GPU runtime unavailable).
+
+Models example:
+```bash
+curl http://100.120.207.64:8080/llama/v1/models \
+  -H "X-API-Key: <your-key>"
+```
+
+Chat example:
+```bash
+curl http://100.120.207.64:8080/llama/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{"model":"qwen2.5-7b-instruct","messages":[{"role":"user","content":"Summarize this in one sentence."}]}'
+```
+
+Completions example:
+```bash
+curl http://100.120.207.64:8080/llama/v1/completions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{"model":"qwen2.5-7b-instruct","prompt":"Write a short haiku about rain."}'
+```
 
 ## LLM (LM Studio, OpenAI-compatible)
 
@@ -36,8 +86,10 @@ All routes below are accessed via the gateway base URL.
 
 Notes:
 - `model` must match an ID from `GET /lmstudio/v1/models`.
-- `/v1/responses` is supported on your LM Studio build (validated on the host).
-- Typical errors: `401` (missing/invalid API key), `502` (LM Studio not running or unreachable).
+- This route proxies to the host LM Studio app, not a Docker container.
+- `LMSTUDIO_HOST` should point to the address Docker can use to reach LM Studio, usually `host.docker.internal` on Docker Desktop.
+- Do not set `LMSTUDIO_HOST` to the public gateway IP or Tailscale IP; that loops nginx back to itself.
+- Typical errors: `401` (missing/invalid API key), `502` (LM Studio app not running, server disabled, wrong host, or wrong port).
 
 Example (preferred, `responses`):
 ```bash
@@ -128,44 +180,15 @@ curl http://100.120.207.64:8080/lmstudio/v1/chat/completions \
   }'
 ```
 
-## LLM (llama.cpp, OpenAI-compatible)
-
-- Models: `GET /llama/v1/models`
-- Chat: `POST /llama/v1/chat/completions`
-- Completions: `POST /llama/v1/completions`
-- Embeddings: `POST /llama/v1/embeddings`
-
-Notes:
-- Runs as a GPU-backed Docker service using the configured GGUF model in `./llama-models`.
-- Default request model ID is `local-gguf` unless `LLAMA_CPP_MODEL_ALIAS` is changed in `.env`.
-- Current deployment uses `qwen2.5-7b-instruct`.
-- Typical errors: `401` (missing/invalid API key), `502` (llama.cpp container not running, model path wrong, or GPU runtime unavailable).
-
-Chat example:
-```bash
-curl http://100.120.207.64:8080/llama/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: <your-key>" \
-  -d '{"model":"qwen2.5-7b-instruct","messages":[{"role":"user","content":"Summarize this in one sentence."}]}'
-```
-
-Completions example:
-```bash
-curl http://100.120.207.64:8080/llama/v1/completions \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: <your-key>" \
-  -d '{"model":"qwen2.5-7b-instruct","prompt":"Write a short haiku about rain."}'
-```
-
 ## TTS (Kokoro)
 
 - Speech: `POST /kokoro/v1/audio/speech`
 
 Notes:
 - Returns audio bytes (e.g., MP3). Use `--output` to save.
-- **Hardware Info:** Runs on a dedicated NVIDIA RTX 5090 proxy with `<1s` generation times.
-- **Caching Feature:** The proxy implements a 1-hour cache based on exact JSON payloads. If you generate the exact same text/voice configuration, Nginx returns the stored MP3 in milliseconds without touching the GPU.
-- **Rate Limit:** 20 requests/minute, bursting up to 10.
+- Runs with `ghcr.io/remsky/kokoro-fastapi-cpu:latest`.
+- The proxy implements a 1-hour cache based on exact JSON payloads. If you generate the exact same text/voice configuration, nginx can return the stored MP3 without calling Kokoro again.
+- Rate limit: 20 requests/minute, bursting up to 10.
 - Common voices include `af_bella`, `af_heart` (list depends on installed packs).
 
 Example:
@@ -183,8 +206,8 @@ curl http://100.120.207.64:8080/kokoro/v1/audio/speech \
 
 Notes:
 - Use multipart upload with `file=@...`.
-- **Hardware Info:** Uses a heavily accelerated multilingual model on GPU (cuda/float16).
-- **Rate Limit:** 5 requests/minute, max 2 concurrent connections.
+- The gateway route points to `faster_whisper_rest`, configured with `DEVICE=cuda` and `COMPUTE_TYPE=float16`.
+- Rate limit: 5 requests/minute, max 2 concurrent connections.
 - You can optionally force a specific language via `-F "language=tr"` or `-F "language=en"`. This is highly recommended to improve transcription accuracy and speed.
 - Returns JSON with a `text` field.
 
@@ -215,7 +238,7 @@ curl http://100.120.207.64:8080/openrouter/v1/chat/completions \
 
 ## Direct (Non-Gateway) Access (Security Note)
 
-**Important:** For security reasons, direct host port exposure (e.g., `8880`, `10400`) for the backend containers has been **closed**. All traffic MUST pass through the Tailscale IP on port `8080` (the Nginx gateway), ensuring that all requests successfully authenticate via the custom `.env` `X-API-Key` before connecting to the GPU containers.
+**Important:** For security reasons, direct host port exposure for backend containers is closed. Client traffic should pass through the gateway on port `8080`, where optional `X-API-Key` auth and proxy limits are applied before requests reach backend services.
 
 - LM Studio (local Windows app): `http://<HOST-IP>:1234/v1/...`
 - llama.cpp: no direct host port is published by Compose; use `/llama/v1/...` through the gateway.
@@ -227,7 +250,9 @@ Use this snippet to configure LLM agents or external apps:
 ```
 Base URL: http://100.120.207.64:8080
 Auth header: X-API-Key: <your-key>
+Default local LLM model: qwen2.5-7b-instruct
 Endpoints:
+  - llama.cpp Models: /llama/v1/models
   - llama.cpp Chat: /llama/v1/chat/completions
   - llama.cpp Completions: /llama/v1/completions
   - llama.cpp Embeddings: /llama/v1/embeddings
@@ -244,8 +269,17 @@ Behavior:
 
 ## Diagnostics
 
+- Full gateway check:
+  `python scripts/connectivity_check.py --mode client --ip 100.120.207.64 --gateway-port 8080 --llama-model qwen2.5-7b-instruct --lmstudio-model "" --openrouter-model ""`
+- Container status:
+  `docker compose ps llama_cpp`
+- llama.cpp health path:
+  `GET /llama/health`
+- llama.cpp models path:
+  `GET /llama/v1/models`
 - Kokoro docs: `GET /kokoro/docs`
 - STT docs: `GET /stt/docs`
 - Gateway errors:
   - `401` = missing/invalid API key
   - `502` = upstream not running/reachable
+  - timeout = backend accepted the request but did not finish before the client/proxy timeout
