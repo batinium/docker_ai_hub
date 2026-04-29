@@ -14,9 +14,44 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - GATEWAY_API_KEYS=${GATEWAY_API_KEYS}
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
-      - LMSTUDIO_HOST=${LMSTUDIO_HOST:-${LAN_IP:-host.docker.internal}}
+      # Do not fall back to LAN_IP here. LAN_IP/AIHUB_IP is the public gateway
+      # address clients use, while LMSTUDIO_HOST is the upstream nginx should
+      # contact from inside the container.
+      - LMSTUDIO_HOST=${LMSTUDIO_HOST:-host.docker.internal}
       - NGINX_ENVSUBST_FILTER=OPENROUTER_API_KEY|GATEWAY_API_KEYS|LMSTUDIO_HOST
     restart: unless-stopped
+
+  llama_cpp:
+    image: ${LLAMA_CPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
+    container_name: llama_cpp
+    command:
+      - --model
+      - ${LLAMA_CPP_MODEL:-/models/model.gguf}
+      - --alias
+      - ${LLAMA_CPP_MODEL_ALIAS:-local-gguf}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --ctx-size
+      - ${LLAMA_CPP_CTX_SIZE:-8192}
+      - --parallel
+      - ${LLAMA_CPP_PARALLEL:-2}
+      - --n-gpu-layers
+      - ${LLAMA_CPP_N_GPU_LAYERS:-999}
+    volumes:
+      - ${LLAMA_CPP_MODELS_DIR:-./llama-models}:/models:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${LLAMA_CPP_NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   faster-whisper:
     image: lscr.io/linuxserver/faster-whisper:latest

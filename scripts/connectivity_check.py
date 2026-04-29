@@ -4,7 +4,7 @@ Connectivity checks for AI Hub services using OpenAI-compatible endpoints.
 
 Run this script on the server or a remote client to verify that the nginx
 gateway is proxying each AI Hub service correctly. All probes target the
-gateway routes (e.g. `/lmstudio/`, `/kokoro/`, `/stt/`). Set
+gateway routes (e.g. `/lmstudio/`, `/llama/`, `/kokoro/`, `/stt/`). Set
 connection details via environment variables or CLI flags as needed. When
 `GATEWAY_API_KEYS` is set, include an `X-API-Key` header or pass
 `--gateway-api-key`.
@@ -92,6 +92,7 @@ class TestContext:
     gateway_port: int
     timeout: int
     lmstudio_model: Optional[str]
+    llama_model: Optional[str]
     openrouter_model: Optional[str]
     kokoro_voice: str
     gateway_api_key: Optional[str]
@@ -197,6 +198,44 @@ def lmstudio_models(session: requests.Session, ctx: TestContext) -> TestResult:
         return TestResult("Gateway → LM Studio models", False, status, str(exc), elapsed)
 
 
+def llama_chat(session: requests.Session, ctx: TestContext) -> TestResult:
+    if not ctx.llama_model:
+        return TestResult("Gateway → llama.cpp chat", True, None, "Skipped (no llama.cpp model provided)", 0.0)
+    url = f"http://{ctx.ip}:{ctx.gateway_port}/llama/v1/chat/completions"
+    payload = _json_chat_payload(ctx.llama_model)
+    start = time.perf_counter()
+    try:
+        resp = session.post(url, json=payload, headers=_headers(ctx.gateway_api_key), timeout=ctx.timeout)
+        elapsed = time.perf_counter() - start
+        resp.raise_for_status()
+        data = resp.json()
+        ok = bool(data.get("choices"))
+        detail = "Received choices" if ok else "Empty response"
+        return TestResult("Gateway → llama.cpp chat", ok, resp.status_code, detail, elapsed)
+    except Exception as exc:
+        elapsed = time.perf_counter() - start
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return TestResult("Gateway → llama.cpp chat", False, status, str(exc), elapsed)
+
+
+def llama_models(session: requests.Session, ctx: TestContext) -> TestResult:
+    url = f"http://{ctx.ip}:{ctx.gateway_port}/llama/v1/models"
+    start = time.perf_counter()
+    try:
+        resp = session.get(url, headers=_headers(ctx.gateway_api_key), timeout=ctx.timeout)
+        elapsed = time.perf_counter() - start
+        resp.raise_for_status()
+        data = resp.json()
+        models = data.get("data") or data.get("models") or []
+        ok = isinstance(models, list) and len(models) > 0
+        detail = f"{len(models)} models listed" if ok else "No models reported"
+        return TestResult("Gateway → llama.cpp models", ok, resp.status_code, detail, elapsed)
+    except Exception as exc:
+        elapsed = time.perf_counter() - start
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return TestResult("Gateway → llama.cpp models", False, status, str(exc), elapsed)
+
+
 def kokoro_tts(session: requests.Session, ctx: TestContext) -> TestResult:
     url = f"http://{ctx.ip}:{ctx.gateway_port}/kokoro/v1/audio/speech"
     payload = {
@@ -295,6 +334,8 @@ GATEWAY_TESTS: Iterable[TestFunc] = (
     lmstudio_models,
     lmstudio_responses,
     lmstudio_chat,
+    llama_models,
+    llama_chat,
     openrouter_models,
     openrouter_chat,
     kokoro_tts,
@@ -318,6 +359,8 @@ def _parse_args(argv: List[str]) -> argparse.Namespace:
                         help="Per-request timeout in seconds.")
     parser.add_argument("--lmstudio-model", default=os.environ.get("LMSTUDIO_MODEL", "qwen3-06.b"),
                         help="Model ID to use for LM Studio responses tests.")
+    parser.add_argument("--llama-model", default=os.environ.get("LLAMA_CPP_MODEL_ALIAS", "local-gguf"),
+                        help="Model ID to use for llama.cpp chat tests.")
     parser.add_argument("--openrouter-model", default=os.environ.get("OPENROUTER_MODEL", "mistralai/devstral-2512:free"),
                         help="Model ID to use for OpenRouter chat tests.")
     parser.add_argument("--kokoro-voice", default=os.environ.get("KOKORO_VOICE", "af_bella"),
@@ -341,6 +384,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         gateway_port=args.gateway_port,
         timeout=args.timeout,
         lmstudio_model=args.lmstudio_model,
+        llama_model=args.llama_model,
         openrouter_model=args.openrouter_model,
         kokoro_voice=args.kokoro_voice,
         gateway_api_key=gateway_api_key,

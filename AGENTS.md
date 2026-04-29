@@ -27,6 +27,25 @@ curl http://100.120.207.64:8080/lmstudio/v1/responses \
   -d '{"model":"google/gemma-3-4b","input":"Hello"}'
 ```
 
+## llama.cpp (OpenAI-compatible)
+
+- Models: `GET /llama/v1/models`
+- Chat: `POST /llama/v1/chat/completions`
+- Completions: `POST /llama/v1/completions`
+- Embeddings: `POST /llama/v1/embeddings`
+
+Current deployed model alias: `qwen2.5-7b-instruct`.
+
+The generic default is `local-gguf`, but this gateway uses `LLAMA_CPP_MODEL_ALIAS=qwen2.5-7b-instruct` in `.env`.
+
+Example:
+```bash
+curl http://100.120.207.64:8080/llama/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{"model":"qwen2.5-7b-instruct","messages":[{"role":"user","content":"Hello"}]}'
+```
+
 ## Kokoro TTS
 
 - Speech: `POST /kokoro/v1/audio/speech`

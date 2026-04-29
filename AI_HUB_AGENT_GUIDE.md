@@ -21,6 +21,7 @@ Missing/invalid key returns `401` with JSON: `{"error":"Invalid or missing API k
 All routes below are accessed via the gateway base URL.
 
 - LM Studio (OpenAI-compatible): `/lmstudio/v1/...`
+- llama.cpp (OpenAI-compatible): `/llama/v1/...`
 - Kokoro TTS: `/kokoro/v1/audio/speech`
 - Faster Whisper STT: `/stt/v1/audio/transcriptions`
 - OpenRouter (optional): `/openrouter/v1/...`
@@ -127,6 +128,35 @@ curl http://100.120.207.64:8080/lmstudio/v1/chat/completions \
   }'
 ```
 
+## LLM (llama.cpp, OpenAI-compatible)
+
+- Models: `GET /llama/v1/models`
+- Chat: `POST /llama/v1/chat/completions`
+- Completions: `POST /llama/v1/completions`
+- Embeddings: `POST /llama/v1/embeddings`
+
+Notes:
+- Runs as a GPU-backed Docker service using the configured GGUF model in `./llama-models`.
+- Default request model ID is `local-gguf` unless `LLAMA_CPP_MODEL_ALIAS` is changed in `.env`.
+- Current deployment uses `qwen2.5-7b-instruct`.
+- Typical errors: `401` (missing/invalid API key), `502` (llama.cpp container not running, model path wrong, or GPU runtime unavailable).
+
+Chat example:
+```bash
+curl http://100.120.207.64:8080/llama/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{"model":"qwen2.5-7b-instruct","messages":[{"role":"user","content":"Summarize this in one sentence."}]}'
+```
+
+Completions example:
+```bash
+curl http://100.120.207.64:8080/llama/v1/completions \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{"model":"qwen2.5-7b-instruct","prompt":"Write a short haiku about rain."}'
+```
+
 ## TTS (Kokoro)
 
 - Speech: `POST /kokoro/v1/audio/speech`
@@ -188,6 +218,7 @@ curl http://100.120.207.64:8080/openrouter/v1/chat/completions \
 **Important:** For security reasons, direct host port exposure (e.g., `8880`, `10400`) for the backend containers has been **closed**. All traffic MUST pass through the Tailscale IP on port `8080` (the Nginx gateway), ensuring that all requests successfully authenticate via the custom `.env` `X-API-Key` before connecting to the GPU containers.
 
 - LM Studio (local Windows app): `http://<HOST-IP>:1234/v1/...`
+- llama.cpp: no direct host port is published by Compose; use `/llama/v1/...` through the gateway.
 
 ## LLM Client Quick Start (Prompt Snippet)
 
@@ -197,6 +228,9 @@ Use this snippet to configure LLM agents or external apps:
 Base URL: http://100.120.207.64:8080
 Auth header: X-API-Key: <your-key>
 Endpoints:
+  - llama.cpp Chat: /llama/v1/chat/completions
+  - llama.cpp Completions: /llama/v1/completions
+  - llama.cpp Embeddings: /llama/v1/embeddings
   - Responses: /lmstudio/v1/responses
   - Chat: /lmstudio/v1/chat/completions
   - Completions: /lmstudio/v1/completions

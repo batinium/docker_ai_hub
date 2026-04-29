@@ -26,6 +26,7 @@ venv/
 
 # Local data caches
 faster-whisper-data/
+llama-models/
 proxy/logs/
 
 # Environment configuration

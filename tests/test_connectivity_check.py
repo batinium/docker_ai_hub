@@ -17,6 +17,7 @@ class TestConnectivityCheck(unittest.TestCase):
             gateway_port=8080,
             timeout=1,
             lmstudio_model="test-model",
+            llama_model="local-gguf",
             openrouter_model="test-or-model",
             kokoro_voice="af_bella",
             gateway_api_key="secret-key"
@@ -48,6 +49,20 @@ class TestConnectivityCheck(unittest.TestCase):
         
         self.assertFalse(result.ok)
         self.assertIn("Connection refused", result.detail)
+
+    def test_llama_chat_success(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"choices": [{"message": {"content": "Hello"}}]}
+        self.session.post.return_value = mock_response
+
+        result = connectivity_check.llama_chat(self.session, self.ctx)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.name, "Gateway → llama.cpp chat")
+        args, kwargs = self.session.post.call_args
+        self.assertIn("/llama/v1/chat/completions", args[0])
+        self.assertEqual(kwargs["json"]["model"], "local-gguf")
 
     def test_kokoro_tts_success(self):
         mock_response = MagicMock()
